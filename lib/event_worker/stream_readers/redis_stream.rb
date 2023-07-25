@@ -10,8 +10,8 @@ module EventWorker
         )
       end
 
-      def each_entry(res)
-        res.each do |(topic, entries)|
+      def each_entry_with_topic(response)
+        response.each do |(topic, entries)|
           entries.each do |(id, attributes)|
             data = {}
             attributes.each_slice(2) do |(attribute, value)|

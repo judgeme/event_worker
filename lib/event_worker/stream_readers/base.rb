@@ -18,11 +18,11 @@ module EventWorker
 
       def fetch_new(topics = nil)
         @last_fetched.clear
-        res = fetch(topics || @offsets.keys)
-        return if res.nil?
+        response = fetch(topics || @offsets.keys)
+        return if response.nil?
 
         messages = []
-        each_entry(res) do |topic, id, data|
+        each_entry_with_topic(response) do |topic, id, data|
           messages << { _topic: topic, _id: id, **data }
           @offsets[topic] = id
           @last_fetched[topic] += 1
@@ -34,7 +34,7 @@ module EventWorker
         raise NotImplemented
       end
 
-      def each_entry(_res)
+      def each_entry_with_topic(_response)
         raise NotImplemented
       end
 
