@@ -21,6 +21,10 @@ module EventWorker
       def flush
         raise NotImplemented
       end
+
+      def trim
+        raise NotImplemented
+      end
     end
   end
 end

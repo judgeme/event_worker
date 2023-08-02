@@ -3,14 +3,20 @@
 module EventWorker
   module StreamWriters
     class RedisStream < Base
-      def flush(delete_messages_older: nil)
+      def flush(trim_messages_older: nil)
         return if @messages.empty?
 
         @messages.each_with_index do |message, index|
-          trim_option = index.zero? && !delete_messages_older.nil? ? ['MINID', delete_messages_older] : []
+          trim_option = index.zero? && !trim_messages_older.nil? ? ['MINID', trim_messages_older] : []
           @db.call('XADD', @topic, *trim_option, '*', *message.compact.map { |k, v| [k, val_to_str(v)] })
         end
         @messages.clear
+      end
+
+      def trim(messages_older:)
+        return if messages_older.nil?
+
+        @db.call('XTRIM', @topic, 'MINID', messages_older)
       end
 
       private
