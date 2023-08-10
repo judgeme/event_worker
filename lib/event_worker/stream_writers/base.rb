@@ -19,6 +19,17 @@ module EventWorker
       end
 
       def flush
+        return if @messages.empty?
+
+        write
+        @messages.clear
+      end
+
+      def size
+        raise NotImplemented
+      end
+
+      def write
         raise NotImplemented
       end
 
