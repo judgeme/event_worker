@@ -6,6 +6,7 @@ module EventWorker
 
     class << self
       def fake!
+        enable_test_mode
         @mode = :fake
       end
 
@@ -15,6 +16,15 @@ module EventWorker
 
       def reset
         EventWorker::FakedStreams.clear
+      end
+
+      private
+
+      def enable_test_mode
+        return if @test_mode_enabled
+
+        EventWorker::StreamWriters::RedisStream.prepend EventWorker::TestingStreamWriter
+        @test_mode_enabled = true
       end
     end
   end
@@ -42,7 +52,7 @@ module EventWorker
   end
 
   module TestingStreamWriter
-    def self.included(base)
+    def self.prepended(base)
       base.alias_method :origin_write, :write
     end
 
@@ -57,10 +67,4 @@ module EventWorker
       EventWorker::FakedStreams.count(@topic)
     end
   end
-end
-
-EventWorker::StreamWriters::RedisStream.prepend EventWorker::TestingStreamWriter
-
-if defined?(Rails) && Rails.respond_to?(:env) && !Rails.env.test?
-  Rails.logger.warn('⛔️ WARNING: EventWorker testing API enabled, but this is not the test environment.')
 end
