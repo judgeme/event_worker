@@ -18,10 +18,10 @@ module EventWorker
         flush
       end
 
-      def flush
+      def flush(*args)
         return if @messages.empty?
 
-        write
+        write(*args)
         @messages.clear
       end
 
