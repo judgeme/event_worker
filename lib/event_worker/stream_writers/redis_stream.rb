@@ -4,9 +4,11 @@ module EventWorker
   module StreamWriters
     class RedisStream < Base
       def write(trim_messages_older: nil)
-        @messages.each_with_index do |message, index|
-          trim_option = index.zero? && !trim_messages_older.nil? ? ['MINID', trim_messages_older] : []
-          @db.call('XADD', @topic, *trim_option, '*', *message.compact.map { |k, v| [k, val_to_str(v)] })
+        @db.pipelined do
+          @messages.each_with_index do |message, index|
+            trim_option = index.zero? && !trim_messages_older.nil? ? ['MINID', trim_messages_older] : []
+            @db.call('XADD', @topic, *trim_option, '*', *message.compact.map { |k, v| [k, val_to_str(v)] })
+          end
         end
       end
 
