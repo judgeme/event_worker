@@ -10,7 +10,7 @@ module EventWorker
       end
 
       def push(*objs)
-        @stream_writer.push(*objs.map { |obj| @serializer.call(obj, @options) })
+        @stream_writer.push(*objs.map { |obj| @serializer.call(obj, **@options) })
       end
     end
   end
