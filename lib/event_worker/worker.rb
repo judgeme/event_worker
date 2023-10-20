@@ -34,11 +34,11 @@ module EventWorker
     # process = handle + save
     def process(*events)
       @context[:handle_size] = events.size
-      @context[:handle_time] = [
-        Benchmark.realtime { before_handle_batch(events) },
-        Benchmark.realtime { handle_batch(events) },
-        Benchmark.realtime { after_handle_batch }
-      ]
+      @context[:handle_time] = Benchmark.realtime do
+        before_handle_batch(events)
+        handle_batch(events)
+        after_handle_batch
+      end
       if @unsaved > 0 && !skip_saving?
         @context[:save_time] = Benchmark.realtime { save }
         @unsaved = 0
