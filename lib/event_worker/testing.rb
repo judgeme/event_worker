@@ -27,6 +27,30 @@ module EventWorker
         @test_mode_enabled = true
       end
     end
+
+    module Matchers
+      def push_event(event)
+        PushEvent.new event
+      end
+
+      class PushEvent
+        include RSpec::Matchers
+
+        def initialize(event)
+          @event = event
+        end
+
+        def matches?(event_stream)
+          events = EventWorker::FakedStreams.messages[event_stream.topic]
+          @matcher = include @event
+          @matcher.matches? events
+        end
+
+        def failure_message
+          @matcher.failure_message
+        end
+      end
+    end
   end
 
   class FakedStreams
