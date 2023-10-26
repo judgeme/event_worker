@@ -2,6 +2,8 @@
 
 module EventWorker
   class << self
+    # EventWorker.config will be nullified by Rails reloading if define EventWorker in lib/ folder.
+    # So move the module here to avoid being reloaded.
     attr_accessor :config
 
     def configure
