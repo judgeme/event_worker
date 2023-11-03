@@ -46,6 +46,10 @@ module EventWorker
           @matcher.matches? events
         end
 
+        def description
+          @matcher.description
+        end
+
         def failure_message
           @matcher.failure_message
         end
