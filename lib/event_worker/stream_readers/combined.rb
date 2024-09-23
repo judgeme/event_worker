@@ -15,7 +15,7 @@ module EventWorker
           next if filtered_topics.empty?
 
           msgs = stream_reader.fetch_new(filtered_topics)
-          messages.concat(msgs) if msgs.present?
+          messages.concat(msgs) unless msgs.nil?
         end
         messages
       end
