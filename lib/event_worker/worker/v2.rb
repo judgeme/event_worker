@@ -6,16 +6,13 @@ module EventWorker
       def initialize(async: true, **options)
         @running = true
         @unsaved = 0
-        @context = Context.new.merge(options)
-        @context.logger = logger
-        @context.name = "#{name} init"
-        @context.benchmark(:init_time) do
-          restore_last_state
-          on_init
+        context = Context.new("#{name} init").merge(options)
+        context.benchmark(:init_time) do
+          restore_last_state(context)
+          on_init(context)
         end
-        @context.flush
+        context.flush
 
-        @context.name = "#{name} process"
         @tasks = {}
         @tasks[:handle] = async ? Task.new(&method(:do_handle)) : method(:do_handle)
         @tasks[:save] = async ? Task.new(&method(:do_save)) : method(:do_save)
@@ -26,19 +23,20 @@ module EventWorker
         trap('INT') { @running = false }
         process_new_events while @running
 
-        @context.name = "#{name} exit"
         do_exit
       end
 
       def process_new_events
         events = nil
-        @context.benchmark(:fetch_time) { events = fetch_new_events }
-        process(*events) unless events.nil?
+        context = Context.new("#{name} process")
+        context.benchmark(:fetch_time) { events = fetch_new_events }
+        @tasks[:handle].call(context, events) unless events.nil?
       end
 
       # process = handle + save
       def process(*events)
-        @tasks[:handle].call(events)
+        context = Context.new("#{name} process")
+        @tasks[:handle].call(context, events)
       end
 
       def name
@@ -49,11 +47,11 @@ module EventWorker
         raise NotImplementedError
       end
 
-      def restore_last_state
+      def restore_last_state(context)
         raise NotImplementedError
       end
 
-      def on_init; end
+      def on_init(context); end
 
       def on_exit; end
 
@@ -77,20 +75,19 @@ module EventWorker
         stream_reader.fetch_new(topics)
       end
 
-      def do_handle(events)
-        @context.log(handle_size: events.size)
-        @context.benchmark(:handle_time) do
+      def do_handle(context, events)
+        context.log(handle_size: events.size)
+        context.benchmark(:handle_time) do
           before_handle_batch(events)
           handle_batch(events)
           after_handle_batch
         end
         if @unsaved > 0 && !skip_saving?
           @unsaved = 0
-          before_save
-          @tasks[:save].call(@context.dup)
-          @context.clear
+          before_save(context)
+          @tasks[:save].call(context)
         else
-          @context.flush
+          context.flush
         end
       end
 
@@ -100,11 +97,12 @@ module EventWorker
       end
 
       def do_exit
-        @context.benchmark(:exit_time) do
+        context = Context.new("#{name} exit")
+        context.benchmark(:exit_time) do
           @tasks.each_value { |task| task.on_exit if task.respond_to?(:on_exit) }
           on_exit
         end
-        @context.flush
+        context.flush
       end
 
       def handle_batch(events)
@@ -122,10 +120,6 @@ module EventWorker
 
       def force_save_threshold
         10_000
-      end
-
-      def logger
-        raise NotImplementedError
       end
 
       def stream_reader

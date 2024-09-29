@@ -4,21 +4,24 @@ module EventWorker
   class Context < Hash
     DISPLAY_PRECISION = 9
 
-    def initialize(...)
+    class << self
+      def logger
+        @logger ||= Logger.new(STDOUT)
+      end
+
+      def logger=(logger)
+        @logger = logger
+      end
+    end
+
+    def initialize(name, ...)
+      @name = name
       super(...)
       @log = {}
     end
 
-    def name=(name)
-      @name = name
-    end
-
-    def logger=(logger)
-      @logger = logger
-    end
-
     def flush
-      @logger&.info("#{@name} #{to_log}")
+      self.class.logger&.info(to_log)
       clear
     end
 

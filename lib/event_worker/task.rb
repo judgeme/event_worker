@@ -7,17 +7,17 @@ module EventWorker
       @exit_signal = exit_signal
       @thread = Thread.new {
         loop do
-          value = @input.pop
-          break if value == @exit_signal
+          args = @input.pop
+          break if args == @exit_signal
 
-          # TODO: handle exception
-          block.call(value)
+          block.call(*args)
         end
       }
+      @thread.abort_on_exception = true
     end
 
-    def call(value)
-      @input.push(value)
+    def call(*args)
+      @input.push(args)
     end
 
     def on_exit
