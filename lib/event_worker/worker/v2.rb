@@ -4,8 +4,10 @@ module EventWorker
   module Worker
     module V2
       def initialize(async: true, **options)
+        @async = async
         @running = true
         @unsaved = 0
+        @tasks = {}
         context = Context.new("#{name} init").merge(options)
         context.benchmark(:init_time) do
           restore_last_state(context)
@@ -13,9 +15,8 @@ module EventWorker
         end
         context.flush
 
-        @tasks = {}
-        @tasks[:handle] = async ? Task.new(&method(:do_handle)) : method(:do_handle)
-        @tasks[:save] = async ? Task.new(&method(:do_save)) : method(:do_save)
+        register_task(:handle, &method(:do_handle))
+        register_task(:save, &method(:do_save))
       end
 
       def run
@@ -73,6 +74,10 @@ module EventWorker
 
       def fetch_new_events
         stream_reader.fetch_new(topics)
+      end
+
+      def register_task(name, &block)
+        @tasks[name] = @async ? Task.new(&block) : block
       end
 
       def do_handle(context, events)
