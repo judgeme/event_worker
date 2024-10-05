@@ -3,8 +3,8 @@
 module EventWorker
   module Worker
     module V2
-      def initialize(async: true, **options)
-        @async = async
+      def initialize(backlog: 1, **options)
+        @backlog = backlog
         @running = true
         @unsaved = 0
         @tasks = {}
@@ -77,10 +77,12 @@ module EventWorker
       end
 
       def register_task(name, &block)
-        @tasks[name] = @async ? Task.new(&block) : block
+        @tasks[name] = @backlog > 0 ? Task.new(backlog: @backlog, &block) : block
       end
 
       def do_handle(context, events)
+        return context unless @running
+
         context.log(handle_size: events.size)
         context.benchmark(:handle_time) do
           before_handle_batch(events)

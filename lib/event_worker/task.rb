@@ -2,8 +2,8 @@
 
 module EventWorker
   class Task
-    def initialize(exit_signal: :stop, &block)
-      @input = SizedQueue.new(1)
+    def initialize(backlog: 1, exit_signal: :stop, &block)
+      @input = SizedQueue.new(backlog)
       @exit_signal = exit_signal
       @thread = Thread.new {
         loop do
