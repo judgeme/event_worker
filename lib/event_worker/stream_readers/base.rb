@@ -10,7 +10,7 @@ module EventWorker
 
       def initialize(db, offsets:, batch_size: BATCH_SIZE, block_msec: BLOCK_MSEC)
         @db = db
-        @offsets = offsets
+        @offsets = offsets.dup
         @last_fetched = Hash.new(0)
         @batch_size = batch_size
         @block_msec = block_msec
