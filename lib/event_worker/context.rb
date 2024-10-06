@@ -2,7 +2,7 @@
 
 module EventWorker
   class Context < Hash
-    DISPLAY_PRECISION = 9
+    DISPLAY_PRECISION = 3
 
     class << self
       def logger

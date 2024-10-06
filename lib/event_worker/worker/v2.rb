@@ -8,7 +8,7 @@ module EventWorker
         @running = true
         @tasks = []
         context = Context.new("#{name} init").merge(options)
-        context.benchmark(:init_time) do
+        context.benchmark(:init) do
           restore_last_state(context)
           on_init(context)
         end
@@ -30,7 +30,7 @@ module EventWorker
       def process_new_events
         events = nil
         context = Context.new("#{name} process")
-        context.benchmark(:fetch_time) { events = fetch_new_events }
+        context.benchmark(:fetch) { events = fetch_new_events }
         @tasks.first.call(context, events) unless events.nil?
       end
 
@@ -86,8 +86,8 @@ module EventWorker
       def do_handle(context, events)
         return unless @running
 
-        context.log(handle_size: events.size)
-        context.benchmark(:handle_time) do
+        context.log(size: events.size)
+        context.benchmark(:handle) do
           before_handle_batch(context, events)
           handle_batch(context, events)
           after_handle_batch(context)
@@ -96,13 +96,13 @@ module EventWorker
       end
 
       def do_save(context)
-        context.benchmark(:save_time) { save(context) }
+        context.benchmark(:save) { save(context) }
         context.flush
       end
 
       def do_exit
         context = Context.new("#{name} exit")
-        context.benchmark(:exit_time) do
+        context.benchmark(:exit) do
           @tasks.each { |task| task.on_exit if task.respond_to?(:on_exit) }
           on_exit
         end
