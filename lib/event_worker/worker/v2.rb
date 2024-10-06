@@ -7,7 +7,7 @@ module EventWorker
         @backlog = backlog
         @running = true
         @unsaved = 0
-        @tasks = {}
+        @tasks = []
         context = Context.new("#{name} init").merge(options)
         context.benchmark(:init_time) do
           restore_last_state(context)
@@ -15,8 +15,9 @@ module EventWorker
         end
         context.flush
 
-        register_task(:handle, &method(:do_handle))
-        register_task(:save, &method(:do_save))
+        register_task(&method(:do_handle))
+        register_task(&method(:do_before_save))
+        register_task(&method(:do_save))
       end
 
       def run
@@ -31,13 +32,13 @@ module EventWorker
         events = nil
         context = Context.new("#{name} process")
         context.benchmark(:fetch_time) { events = fetch_new_events }
-        @tasks[:handle].call(context, events) unless events.nil?
+        @tasks.first.call(context, events) unless events.nil?
       end
 
       # process = handle + save
       def process(*events)
         context = Context.new("#{name} process")
-        @tasks[:handle].call(context, events)
+        @tasks.first.call(context, events)
       end
 
       def name
@@ -76,8 +77,11 @@ module EventWorker
         stream_reader.fetch_new(topics)
       end
 
-      def register_task(name, &block)
-        @tasks[name] = @backlog > 0 ? Task.new(backlog: @backlog, &block) : block
+      # TODO: Support @backlog == 0
+      def register_task(&block)
+        task = @backlog > 0 ? Task.new(backlog: @backlog, &block) : block
+        @tasks.last.output = task.input unless @tasks.empty?
+        @tasks << task
       end
 
       def do_handle(context, events)
@@ -89,12 +93,17 @@ module EventWorker
           handle_batch(events)
           after_handle_batch
         end
+        context
+      end
+
+      def do_before_save(context)
         if @unsaved > 0 && !skip_saving?
           @unsaved = 0
           before_save(context)
-          @tasks[:save].call(context)
+          context
         else
           context.flush
+          nil
         end
       end
 
@@ -106,7 +115,7 @@ module EventWorker
       def do_exit
         context = Context.new("#{name} exit")
         context.benchmark(:exit_time) do
-          @tasks.each_value { |task| task.on_exit if task.respond_to?(:on_exit) }
+          @tasks.each { |task| task.on_exit if task.respond_to?(:on_exit) }
           on_exit
         end
         context.flush

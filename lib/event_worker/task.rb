@@ -2,15 +2,20 @@
 
 module EventWorker
   class Task
-    def initialize(backlog: 1, exit_signal: :stop, &block)
+    attr_reader :input
+    attr_accessor :output
+
+    def initialize(output: nil, backlog: 1, exit_signal: :stop, &block)
       @input = SizedQueue.new(backlog)
+      @output = output
       @exit_signal = exit_signal
       @thread = Thread.new {
         loop do
           args = @input.pop
           break if args == @exit_signal
 
-          block.call(*args)
+          value = block.call(*args)
+          @output&.push(value.is_a?(Array) ? value : [value]) unless value.nil?
         end
       }
       @thread.abort_on_exception = true
