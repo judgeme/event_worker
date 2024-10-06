@@ -84,7 +84,7 @@ module EventWorker
       end
 
       def do_handle(context, events)
-        return context unless @running
+        return unless @running
 
         context.log(handle_size: events.size)
         context.benchmark(:handle_time) do
