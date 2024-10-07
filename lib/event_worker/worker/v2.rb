@@ -3,7 +3,8 @@
 module EventWorker
   module Worker
     module V2
-      def initialize(backlog: 1, **options)
+      def initialize(name: nil, backlog: 1, **options)
+        @name = name || self.class.name
         @backlog = backlog
         @running = true
         @tasks = []
@@ -41,7 +42,7 @@ module EventWorker
       end
 
       def name
-        self.class.name
+        @name
       end
 
       def topics
