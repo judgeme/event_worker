@@ -19,10 +19,5 @@ module EventWorker
     def stream_writer(topic)
       config.stream_writer_class.new(config.stream_client, topic)
     end
-
-    # Helper to create a query pool
-    def query_pool(...)
-      EventWorker::QueryPool.new(...)
-    end
   end
 end
