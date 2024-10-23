@@ -77,7 +77,6 @@ module EventWorker
         stream_reader.fetch_new(topics)
       end
 
-      # TODO: Support @backlog == 0
       def register_task(&block)
         task = Task.new(backlog: @backlog, &block)
         task.after(@tasks.last) unless @tasks.empty?
