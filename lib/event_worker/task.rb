@@ -25,6 +25,10 @@ module EventWorker
       @input.push(args)
     end
 
+    def after(task)
+      task.output = @input
+    end
+
     def on_exit
       @input.push(@exit_signal)
       @thread.join

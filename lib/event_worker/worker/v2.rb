@@ -80,7 +80,7 @@ module EventWorker
       # TODO: Support @backlog == 0
       def register_task(&block)
         task = @backlog > 0 ? Task.new(backlog: @backlog, &block) : block
-        @tasks.last.output = task.input unless @tasks.empty?
+        task.after(@tasks.last) unless @tasks.empty?
         @tasks << task
       end
 
