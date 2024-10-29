@@ -3,9 +3,9 @@
 module EventWorker
   module Worker
     module V2
-      def initialize(name: nil, backlog: 1, **options)
+      def initialize(name: nil, **options)
         @name = name || self.class.name
-        @backlog = backlog
+        @backlog = options[:backlog] || 1
         @running = true
         @tasks = []
         context = Context.new("#{name} init").merge(options)
@@ -77,10 +77,9 @@ module EventWorker
         stream_reader.fetch_new(topics)
       end
 
-      # TODO: Support @backlog == 0
       def register_task(&block)
-        task = @backlog > 0 ? Task.new(backlog: @backlog, &block) : block
-        @tasks.last.output = task.input unless @tasks.empty?
+        task = Task.new(backlog: @backlog, &block)
+        task.after(@tasks.last) unless @tasks.empty?
         @tasks << task
       end
 
