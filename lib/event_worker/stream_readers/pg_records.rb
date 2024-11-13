@@ -3,9 +3,10 @@
 module EventWorker
   module StreamReaders
     class PgRecords < Base
-      def initialize(includes: [], **options)
+      def initialize(includes: [], scopes: [], **options)
         super(nil, **options)
         @includes = includes
+        @scopes = scopes
       end
 
       def fetch(topics)
@@ -13,6 +14,9 @@ module EventWorker
           klass = topic.constantize
           records = klass.where(klass.arel_table[:id].gt(offsets[topic] || 0)).order(:id).limit(@batch_size)
           records = records.includes(*@includes) if @includes.any?
+          @scopes.each do |scope|
+            records = records.public_send(scope) if records.respond_to?(scope)
+          end
           [topic, records]
         end
       end
