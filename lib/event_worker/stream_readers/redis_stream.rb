@@ -6,7 +6,7 @@ module EventWorker
       def fetch(topics)
         @db.call(
           'XREAD', 'COUNT', @batch_size, 'BLOCK', @block_msec,
-          'STREAMS', *topics, *offsets.values_at(*topics).map { |id| id || '$' }
+          'STREAMS', *topics, *offsets.values_at(*topics).map { |id| id || '0-0' }
         )
       end
 
