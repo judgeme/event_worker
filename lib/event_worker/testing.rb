@@ -2,6 +2,7 @@
 
 module EventWorker
   if ENV['RAILS_ENV'] == 'test'
+
     class Testing
       @mode = nil
 
@@ -95,6 +96,10 @@ module EventWorker
       def size
         EventWorker::FakedStreams.count(@topic)
       end
+    end
+
+  else
+    class Testing
     end
   end
 end
