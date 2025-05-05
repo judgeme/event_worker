@@ -1,6 +1,8 @@
 module EventWorker
   module Utils
     class PushPool
+      BATCH_SIZE = 1000
+
       def initialize
         @pool = {}                         # owner_id => [items]
         @versions = {}                     # version => { owner_id => items_count }
@@ -40,7 +42,7 @@ module EventWorker
       # Shift the first owner_id and its first limit items from the pool
       # @param limit [Integer] The number of items to shift
       # @return [Array(Integer, Array), nil] [owner_id, items] or nil if pool is empty
-      def shift(limit: 1000)
+      def shift(limit: BATCH_SIZE)
         @mutex.synchronize do
           return nil if @pool.empty?
 
@@ -64,19 +66,24 @@ module EventWorker
       # @return [Array(Integer, Integer), nil] [left_quantity, completed_versions] or nil if owner_id is not in the pool
       def ack(version, owner_id, quantity = nil)
         @mutex.synchronize do
-          return if @versions.dig(version, owner_id).nil?
+          ack_one(version, owner_id, quantity)
+        end
+      end
 
-          left_quantity = \
-            if quantity && quantity < @versions[version][owner_id]
-              @versions[version][owner_id] -= quantity
-            else
-              @versions[version].delete(owner_id)
-              0
-            end
-
-          # If version is empty, mark it as complete
-          completed = @versions[version].empty? ? complete_version(version) : 0
-          [left_quantity, completed]
+      # Acknowledge processing for a owner_id in multiple versions
+      # @param owner_id [Integer, String] The owner_id to acknowledge
+      # @param items [Array] The items to acknowledge
+      # @return [Hash] The results of the acknowledgements
+      def ack_for(owner_id, items)
+        quantities = Hash.new(0)
+        items.each do |(version, _item)|
+          quantities[version] += 1
+        end
+        @mutex.synchronize do
+          results = quantities.map do |version, quantity|
+            ack_one(version, owner_id, quantity)
+          end
+          quantities.keys.zip(results).to_h
         end
       end
 
@@ -130,6 +137,22 @@ module EventWorker
       end
 
       private
+
+      def ack_one(version, owner_id, quantity = nil)
+        return if @versions.dig(version, owner_id).nil?
+
+        left_quantity = \
+          if quantity && quantity < @versions[version][owner_id]
+            @versions[version][owner_id] -= quantity
+          else
+            @versions[version].delete(owner_id)
+            0
+          end
+
+        # If version is empty, mark it as complete
+        completed = @versions[version].empty? ? complete_version(version) : 0
+        [left_quantity, completed]
+      end
 
       def complete_version(version)
         @versions.delete(version)

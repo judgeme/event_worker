@@ -177,7 +177,7 @@ module EventWorker
           let!(:version_1) { push_pool.add(owner_id_1 => items_1) }
           let!(:version_2) { push_pool.add(owner_id_2 => items_2) }
 
-          context 'when smallest version is completed' do
+          context 'when completing the smallest version' do
             let(:version) { version_1 }
 
             it 'completes the version' do
@@ -189,7 +189,7 @@ module EventWorker
             end
           end
 
-          context 'when non-smallest version is completed' do
+          context 'when completing a non-smallest version' do
             let(:version) { version_2 }
             let(:owner_id) { owner_id_2 }
 
@@ -200,6 +200,25 @@ module EventWorker
               )
               expect(push_pool.instance_variable_get(:@completed_versions)).to eq([version_2])
             end
+          end
+        end
+      end
+
+      describe '#ack_for' do
+        subject(:result) do
+          owner_id, items = push_pool.shift
+          push_pool.ack_for(owner_id, items)
+        end
+        let!(:version_1) { push_pool.add(owner_id_1 => items_1) }
+        let!(:version_2) { push_pool.add(owner_id_2 => items_2) }
+        let!(:version_3) { push_pool.add(owner_id_1 => items_3) }
+
+        context 'when completing multiple versions' do
+          it 'completes the version' do
+            expect(result).to eq(
+              version_1 => [0, 1],
+              version_3 => [0, 0]
+            )
           end
         end
       end
