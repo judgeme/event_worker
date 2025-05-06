@@ -93,9 +93,12 @@ module EventWorker
       end
 
       describe '#shift' do
-        subject(:result) { push_pool.shift(limit: items_1.size) }
+        subject(:result) { push_pool.shift(limit: items_1.size, blocking:) }
+        let(:blocking) { true }
 
         context 'when pool is empty' do
+          let(:blocking) { false }
+
           it 'returns nil' do
             expect(result).to be_nil
           end

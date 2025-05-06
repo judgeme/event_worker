@@ -11,6 +11,7 @@ module EventWorker
         @current_version = 0
         @completed_version = 0
         @mutex = Mutex.new
+        @cond_var = ConditionVariable.new
       end
 
       # Add items to the pool for a batch of owner_ids, and assign a version to the batch
@@ -35,15 +36,24 @@ module EventWorker
             end
           end
 
+          @cond_var.signal
+
           version
         end
       end
 
       # Shift the first owner_id and its first limit items from the pool
+      # @param blocking [Boolean] Whether to block until there are items in the pool
       # @param limit [Integer] The number of items to shift
       # @return [Array(Integer, Array), nil] [owner_id, items] or nil if pool is empty
-      def shift(limit: BATCH_SIZE)
+      def shift(blocking: true, limit: BATCH_SIZE)
         @mutex.synchronize do
+          if blocking
+            while @pool.empty?
+              @cond_var.wait(@mutex)
+            end
+          end
+
           return nil if @pool.empty?
 
           # Get the first owner_id and its items from the pool
