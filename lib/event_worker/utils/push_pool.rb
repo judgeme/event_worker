@@ -208,7 +208,7 @@ module EventWorker
           @threads << thread
         end
         thread = Thread.new do
-          while @running || (@wait_for_completion && busy?)
+          while @running || !@completed_versions_queue.empty? || (@wait_for_completion && busy?)
             version = @completed_versions_queue.pop
             next if version.nil?
 
