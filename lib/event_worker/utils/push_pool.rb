@@ -3,7 +3,7 @@ module EventWorker
     class PushPool
       BATCH_SIZE = 1000
 
-      def initialize
+      def initialize(num_threads: 1, &block)
         @pool = {}                         # owner_id => [items]
         @versions = {}                     # version => { owner_id => items_count }
         @completed_versions = []           # sorted versions that have been completed
@@ -12,6 +12,12 @@ module EventWorker
         @completed_version = 0
         @mutex = Mutex.new
         @cond_var = ConditionVariable.new
+
+        @num_threads = num_threads
+        @threads = []
+        @running = false
+        @processor = block
+        run unless @processor.nil?
       end
 
       # Add items to the pool for a batch of owner_ids, and assign a version to the batch
@@ -104,6 +110,23 @@ module EventWorker
         @version_complete_callbacks << block
       end
 
+      # Stop processing and wait for all threads to complete
+      # @return [Boolean] Whether processing was stopped
+      def stop
+        return false unless @running
+
+        @mutex.synchronize do
+          @running = false
+        end
+
+        @threads.each(&:join)
+        @threads.clear
+
+        # Clear the pool
+        @pool.clear
+        true
+      end
+
       # Returns the number of owner_ids in the pool
       # @return [Integer] The size of the pool
       def size
@@ -147,6 +170,28 @@ module EventWorker
       end
 
       private
+
+      def run
+        return if @running
+
+        @running = true
+        @num_threads.times do
+          thread = Thread.new do
+            while @running
+              owner_id, versioned_items = @pool.shift
+              retry_in = @processor.call(owner_id, versioned_items)
+              if retry_in.nil?
+                ack_for(owner_id, versioned_items)
+              else
+                sleep retry_in
+                add_back(owner_id, versioned_items)
+              end
+            end
+          end
+          thread.abort_on_exception = true
+          @threads << thread
+        end
+      end
 
       def ack_one(version, owner_id, quantity = nil)
         return if @versions.dig(version, owner_id).nil?
