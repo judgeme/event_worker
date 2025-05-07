@@ -9,9 +9,9 @@ module EventWorker
       let(:owner_id_1) { 1 }
       let(:owner_id_2) { 2 }
       let(:owner_id_3) { 3 }
-      let(:items_1) { ['item1', 'item2'] }
-      let(:items_2) { ['item3', 'item4'] }
-      let(:items_3) { ['item5', 'item6'] }
+      let(:items_1) { { 1 => 'item1', 2 => 'item2' } }
+      let(:items_2) { { 3 => 'item3', 4 => 'item4' } }
+      let(:items_3) { { 5 => 'item5', 6 => 'item6' } }
 
       describe '#initialize' do
         it 'initializes with empty pool and version tracking' do
@@ -30,8 +30,8 @@ module EventWorker
         it 'adds items to the pool and returns version number' do
           expect(version).to eq(1)
           expect(push_pool.instance_variable_get(:@pool)).to eq(
-            owner_id_1 => items_1.map { |item| [1, item] },
-            owner_id_2 => items_2.map { |item| [1, item] }
+            owner_id_1 => [owner_id_1, [1], items_1],
+            owner_id_2 => [owner_id_2, [1], items_2]
           )
           expect(push_pool.instance_variable_get(:@versions)).to eq(
             1 => { owner_id_1 => items_1.size, owner_id_2 => items_2.size }
@@ -46,14 +46,14 @@ module EventWorker
           end
         end
 
-        context 'when batch data has empty item arrays' do
-          let(:batch) { { owner_id_1 => items_1, owner_id_2 => [] } }
+        context 'when batch data has empty items' do
+          let(:batch) { { owner_id_1 => items_1, owner_id_2 => {} } }
 
           it 'does not skip empty item arrays' do
             expect(version).to eq(1)
             expect(push_pool.instance_variable_get(:@pool)).to eq(
-              owner_id_1 => items_1.map { |item| [1, item] },
-              owner_id_2 => []
+              owner_id_1 => [owner_id_1, [1], items_1],
+              owner_id_2 => [owner_id_2, [1], {}]
             )
             expect(push_pool.instance_variable_get(:@versions)).to eq(
               1 => { owner_id_1 => items_1.size, owner_id_2 => 0 }
@@ -69,7 +69,7 @@ module EventWorker
           it 'adds items to the pool and returns version number' do
             expect(version).to eq(2)
             expect(push_pool.instance_variable_get(:@pool)).to eq(
-              owner_id_1 => items_1.map { |item| [1, item] } + items_2.map { |item| [2, item] }
+              owner_id_1 => [owner_id_1, [1, 2], items_1.merge(items_2)]
             )
             expect(push_pool.instance_variable_get(:@versions)).to eq(
               1 => { owner_id_1 => items_1.size },
@@ -84,16 +84,16 @@ module EventWorker
             expect(push_pool.add({ owner_id_2 => items_2 })).to eq(2)
             expect(push_pool.add({ owner_id_3 => items_3 })).to eq(3)
             expect(push_pool.instance_variable_get(:@pool)).to eq(
-              owner_id_1 => items_1.map { |item| [1, item] },
-              owner_id_2 => items_2.map { |item| [2, item] },
-              owner_id_3 => items_3.map { |item| [3, item] }
+              owner_id_1 => [owner_id_1, [1], items_1],
+              owner_id_2 => [owner_id_2, [2], items_2],
+              owner_id_3 => [owner_id_3, [3], items_3]
             )
           end
         end
       end
 
       describe '#shift' do
-        subject(:result) { push_pool.shift(limit: items_1.size, blocking:) }
+        subject(:result) { push_pool.shift(blocking:) }
         let(:blocking) { true }
 
         context 'when pool is empty' do
@@ -104,25 +104,14 @@ module EventWorker
           end
         end
 
-        context 'when owner_id has less than limit items' do
+        context 'when pool is not empty' do
           before do
             push_pool.add({ owner_id_1 => items_1 })
           end
 
           it 'returns owner_id and all items' do
-            expect(result).to eq([owner_id_1, items_1.map { |item| [1, item] }])
+            expect(result).to eq([owner_id_1, owner_id_1, [1], items_1])
             expect(push_pool.instance_variable_get(:@pool)[owner_id_1]).to be_nil
-          end
-        end
-
-        context 'when owner_id has more than limit items' do
-          before do
-            push_pool.add({ owner_id_1 => items_1 + items_2 })
-          end
-
-          it 'returns owner_id and limit items' do
-            expect(result).to eq([owner_id_1, items_1.map { |item| [1, item] }])
-            expect(push_pool.instance_variable_get(:@pool)[owner_id_1]).to eq(items_2.map { |item| [1, item] })
           end
         end
       end
@@ -209,8 +198,8 @@ module EventWorker
 
       describe '#ack_for' do
         subject(:result) do
-          owner_id, items = push_pool.shift
-          push_pool.ack_for(owner_id, items)
+          owner_id, _items = push_pool.shift
+          push_pool.ack_for(owner_id)
         end
         let!(:version_1) { push_pool.add(owner_id_1 => items_1) }
         let!(:version_2) { push_pool.add(owner_id_2 => items_2) }
@@ -319,7 +308,7 @@ module EventWorker
           threads = []
           10.times do |i|
             threads << Thread.new do
-              push_pool.add({ i => ["item#{i}"] })
+              push_pool.add({ i => { i => "item#{i}" } })
             end
           end
           threads.each(&:join)

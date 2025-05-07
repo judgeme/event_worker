@@ -2,10 +2,14 @@ module EventWorker
   module Utils
     class PushPool
       BATCH_SIZE = 1000
+      OWNER = 0
+      VERSIONS = 1
+      ITEMS = 2
 
       def initialize(num_threads: 1, &block)
         @pool = {}                         # owner_id => [items]
         @versions = {}                     # version => { owner_id => items_count }
+        @versions_by_owner = {}            # owner_id => [version, version, ...]
         @completed_versions = []           # sorted versions that have been completed
         @version_complete_callbacks = []   # callbacks for completed versions
         @current_version = 0
@@ -25,7 +29,7 @@ module EventWorker
       # - if the owner_id is already in the pool, the item will be added to the array
       # @param batch [Hash] A hash of owner_id => [item, item, ...]
       # @return [Integer] The version assigned to this batch
-      def add(batch)
+      def add(batch, &to_key)
         return if batch.empty?
 
         @mutex.synchronize do
@@ -34,12 +38,14 @@ module EventWorker
           @versions[version] = {}
 
           # Add items to pool for each owner_id
-          batch.each do |owner_id, items|
-            @pool[owner_id] ||= []
+          batch.each do |owner, items|
+            owner_id = to_key.nil? ? owner : to_key.call(owner)
             @versions[version][owner_id] = items.size
-            items.each do |item|
-              @pool[owner_id] << [version, item]
-            end
+            @versions_by_owner[owner_id] ||= Set.new
+            @versions_by_owner[owner_id] << version
+            @pool[owner_id] ||= [owner, [], {}]
+            @pool[owner_id][VERSIONS] << version
+            @pool[owner_id][ITEMS].merge!(items)
           end
 
           @cond_var.signal
@@ -48,11 +54,10 @@ module EventWorker
         end
       end
 
-      # Shift the first owner_id and its first limit items from the pool
+      # Shift the first owner_id and its items from the pool
       # @param blocking [Boolean] Whether to block until there are items in the pool
-      # @param limit [Integer] The number of items to shift
-      # @return [Array(Integer, Array), nil] [owner_id, items] or nil if pool is empty
-      def shift(blocking: true, limit: BATCH_SIZE)
+      # @return [Array(Integer, Object, Array, Array), nil] [owner_id, owner, versions, items] or nil if pool is empty
+      def shift(blocking: true)
         @mutex.synchronize do
           if blocking
             while @pool.empty?
@@ -62,16 +67,8 @@ module EventWorker
 
           return nil if @pool.empty?
 
-          # Get the first owner_id and its items from the pool
-          owner_id, items = @pool.shift
-
-          # If the owner_id has more than limit items, push the remaining items back to the pool
-          if items.size > limit
-            left_items = items.pop(items.size - limit)
-            @pool[owner_id] = left_items
-          end
-
-          [owner_id, items]
+          owner_id, data = @pool.shift
+          [owner_id, data[OWNER], data[VERSIONS], data[ITEMS]]
         end
       end
 
@@ -88,18 +85,14 @@ module EventWorker
 
       # Acknowledge processing for a owner_id in multiple versions
       # @param owner_id [Integer, String] The owner_id to acknowledge
-      # @param items [Array] The items to acknowledge
       # @return [Hash] The results of the acknowledgements
-      def ack_for(owner_id, items)
-        quantities = Hash.new(0)
-        items.each do |(version, _item)|
-          quantities[version] += 1
-        end
+      def ack_for(owner_id)
         @mutex.synchronize do
-          results = quantities.map do |version, quantity|
-            ack_one(version, owner_id, quantity)
+          versions = @versions_by_owner[owner_id].to_a
+          results = versions.map do |version|
+            ack_one(version, owner_id)
           end
-          quantities.keys.zip(results).to_h
+          versions.zip(results).to_h
         end
       end
 
@@ -149,7 +142,7 @@ module EventWorker
       # @param owner_id [Integer, String] The shop ID
       # @return [Integer] The number of items for the owner_id
       def count_for(owner_id)
-        @mutex.synchronize { (@pool[owner_id] || []).size }
+        @mutex.synchronize { @pool.dig(owner_id, ITEMS)&.size || 0 }
       end
 
       # Returns the pending versions
@@ -164,6 +157,7 @@ module EventWorker
         @mutex.synchronize do
           @pool.clear
           @versions.clear
+          @versions_by_owner.clear
           @completed_versions.clear
           @current_version = 0
         end
@@ -201,6 +195,8 @@ module EventWorker
             @versions[version][owner_id] -= quantity
           else
             @versions[version].delete(owner_id)
+            @versions_by_owner[owner_id].delete(version)
+            @versions_by_owner.delete(owner_id) if @versions_by_owner[owner_id].empty?
             0
           end
 
