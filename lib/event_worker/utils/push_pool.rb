@@ -6,18 +6,20 @@ module EventWorker
       VERSIONS = 1
       ITEMS = 2
 
-      def initialize(num_threads: 1, &block)
-        @pool = {}                         # owner_id => [items]
-        @versions = {}                     # version => { owner_id => items_count }
-        @versions_by_owner = {}            # owner_id => [version, version, ...]
-        @completed_versions = []           # sorted versions that have been completed
-        @version_complete_callbacks = []   # callbacks for completed versions
+      def initialize(num_threads: 1, wait_for_completion: false, &block)
+        @num_threads = num_threads
+        @wait_for_completion = wait_for_completion
+
+        @pool = {}                                # owner_id => [items]
+        @versions = {}                            # version => { owner_id => items_count }
+        @completed_versions = []                  # sorted versions that have been completed
+        @completed_versions_queue = Queue.new     # versions that have been completed
+        @version_complete_callbacks = []          # callbacks for completed versions
         @current_version = 0
         @completed_version = 0
         @mutex = Mutex.new
         @cond_var = ConditionVariable.new
 
-        @num_threads = num_threads
         @threads = []
         @running = false
         @processor = block
@@ -28,29 +30,41 @@ module EventWorker
       # - if the owner_id is not in the pool, it will be added
       # - if the owner_id is already in the pool, the item will be added to the array
       # @param batch [Hash] A hash of owner_id => [item, item, ...]
+      # @param owners [Hash] A hash of owner_id => owner
       # @return [Integer] The version assigned to this batch
-      def add(batch, &to_key)
-        return if batch.empty?
-
+      def add(batch, owners: nil, client_version: nil)
         @mutex.synchronize do
-          # Increment version for this batch
-          version = @current_version += 1
+          items_count = 0
+          @current_version += 1
+          raise 'invalid client_version' unless client_version.nil? || client_version == @current_version
+
+          version = @current_version
           @versions[version] = {}
 
           # Add items to pool for each owner_id
-          batch.each do |owner, items|
-            owner_id = to_key.nil? ? owner : to_key.call(owner)
+          batch.each do |owner_id, items|
+            next if items.empty?
+
+            items_count += items.size
+            owner = owners.nil? ? owner_id : owners[owner_id]
             @versions[version][owner_id] = items.size
-            @versions_by_owner[owner_id] ||= Set.new
-            @versions_by_owner[owner_id] << version
             @pool[owner_id] ||= [owner, [], {}]
             @pool[owner_id][VERSIONS] << version
             @pool[owner_id][ITEMS].merge!(items)
           end
 
+          complete_version(version) if items_count == 0
+
           @cond_var.signal
 
           version
+        end
+      end
+
+      def add_back(owner_id, owner, versions, items)
+        @mutex.synchronize do
+          @pool[owner_id] = [owner, versions, items]
+          @cond_var.signal
         end
       end
 
@@ -60,7 +74,7 @@ module EventWorker
       def shift(blocking: true)
         @mutex.synchronize do
           if blocking
-            while @pool.empty?
+            while @running && @pool.empty?
               @cond_var.wait(@mutex)
             end
           end
@@ -85,10 +99,10 @@ module EventWorker
 
       # Acknowledge processing for a owner_id in multiple versions
       # @param owner_id [Integer, String] The owner_id to acknowledge
+      # @param versions [Array] The versions to acknowledge
       # @return [Hash] The results of the acknowledgements
-      def ack_for(owner_id)
+      def ack_for(owner_id, versions)
         @mutex.synchronize do
-          versions = @versions_by_owner[owner_id].to_a
           results = versions.map do |version|
             ack_one(version, owner_id)
           end
@@ -110,13 +124,13 @@ module EventWorker
 
         @mutex.synchronize do
           @running = false
+          @cond_var.signal
+          @completed_versions_queue << nil
         end
 
         @threads.each(&:join)
         @threads.clear
 
-        # Clear the pool
-        @pool.clear
         true
       end
 
@@ -130,6 +144,12 @@ module EventWorker
       # @return [Boolean] Whether the pool is empty
       def empty?
         @mutex.synchronize { @pool.empty? }
+      end
+
+      # Returns true if any worker is busy
+      # @return [Boolean] Whether any worker is busy
+      def busy?
+        @mutex.synchronize { @versions.any? }
       end
 
       # Returns the owner_ids in the pool
@@ -157,7 +177,6 @@ module EventWorker
         @mutex.synchronize do
           @pool.clear
           @versions.clear
-          @versions_by_owner.clear
           @completed_versions.clear
           @current_version = 0
         end
@@ -171,20 +190,33 @@ module EventWorker
         @running = true
         @num_threads.times do
           thread = Thread.new do
-            while @running
-              owner_id, versioned_items = @pool.shift
-              retry_in = @processor.call(owner_id, versioned_items)
+            while @running || (@wait_for_completion && busy?)
+              data = shift
+              next if data.nil?
+
+              owner_id, owner, versions, items = data
+              retry_in = @processor.call(owner_id, owner, versions, items)
               if retry_in.nil?
-                ack_for(owner_id, versioned_items)
+                ack_for(owner_id, versions)
               else
-                sleep retry_in
-                add_back(owner_id, versioned_items)
+                # sleep retry_in
+                add_back(owner_id, owner, versions, items)
               end
             end
           end
           thread.abort_on_exception = true
           @threads << thread
         end
+        thread = Thread.new do
+          while @running || (@wait_for_completion && busy?)
+            version = @completed_versions_queue.pop
+            next if version.nil?
+
+            @version_complete_callbacks.each { |callback| callback.call(version) }
+          end
+        end
+        @threads << thread
+        thread.abort_on_exception = true
       end
 
       def ack_one(version, owner_id, quantity = nil)
@@ -195,8 +227,6 @@ module EventWorker
             @versions[version][owner_id] -= quantity
           else
             @versions[version].delete(owner_id)
-            @versions_by_owner[owner_id].delete(version)
-            @versions_by_owner.delete(owner_id) if @versions_by_owner[owner_id].empty?
             0
           end
 
@@ -215,8 +245,7 @@ module EventWorker
         # Process completed versions in order
         count = 0
         while @completed_versions.first == (@completed_version + 1)
-          @completed_version = @completed_versions.shift
-          @version_complete_callbacks.each { |callback| callback.call(@completed_version) }
+          @completed_versions_queue << @completed_versions.shift
           count += 1
         end
         count
