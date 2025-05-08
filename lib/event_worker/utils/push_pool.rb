@@ -124,8 +124,8 @@ module EventWorker
 
         @mutex.synchronize do
           @running = false
-          @cond_var.signal
           @completed_versions_queue << nil
+          @num_threads.times { @cond_var.signal }
         end
 
         @threads.each(&:join)
@@ -208,7 +208,7 @@ module EventWorker
           @threads << thread
         end
         thread = Thread.new do
-          while @running || !@completed_versions_queue.empty? || (@wait_for_completion && busy?)
+          while @running || !@completed_versions_queue.empty? || (@wait_for_completion && @completed_version < @current_version)
             version = @completed_versions_queue.pop
             next if version.nil?
 
@@ -245,7 +245,8 @@ module EventWorker
         # Process completed versions in order
         count = 0
         while @completed_versions.first == (@completed_version + 1)
-          @completed_versions_queue << @completed_versions.shift
+          @completed_version = @completed_versions.shift
+          @completed_versions_queue << @completed_version
           count += 1
         end
         count
