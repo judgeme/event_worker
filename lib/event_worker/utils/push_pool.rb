@@ -6,10 +6,14 @@ module EventWorker
       VERSIONS = 1
       ITEMS = 2
 
-      def initialize(concurrency: 1, wait_for_completion: false, &block)
+      def initialize(concurrency: 1, &block)
         @concurrency = concurrency
-        @wait_for_completion = wait_for_completion
 
+        @queued = 0
+        @processing = 0
+        @processed = 0
+        @retry = 0
+        @retry_owner_ids = Set.new
         @pool = {}                                # owner_id => [items]
         @versions = {}                            # version => { owner_id => items_count }
         @completed_versions = []                  # sorted versions that have been completed
@@ -45,6 +49,7 @@ module EventWorker
           batch.each do |owner_id, items|
             next if items.empty?
 
+            @queued += 1
             items_count += items.size
             owner = owners.nil? ? owner_id : owners[owner_id]
             @versions[version][owner_id] = items.size
@@ -53,10 +58,8 @@ module EventWorker
             @pool[owner_id][ITEMS].merge!(items)
           end
 
-          complete_version(version) if items_count == 0
-
           @cond_var.signal
-
+          complete_version(version) if items_count == 0
           version
         end
       end
@@ -64,6 +67,12 @@ module EventWorker
       def add_back(owner_id, owner, versions, items)
         @mutex.synchronize do
           @pool[owner_id] = [owner, versions, items]
+          @processing -= 1
+          @queued += 1
+          unless @retry_owner_ids.include?(owner_id)
+            @retry += 1
+            @retry_owner_ids << owner_id
+          end
           @cond_var.signal
         end
       end
@@ -82,6 +91,8 @@ module EventWorker
           return nil if @pool.empty?
 
           owner_id, data = @pool.shift
+          @queued -= 1
+          @processing += 1
           [owner_id, data[OWNER], data[VERSIONS], data[ITEMS]]
         end
       end
@@ -138,7 +149,7 @@ module EventWorker
       # Returns true if any worker is busy
       # @return [Boolean] Whether any worker is busy
       def busy?
-        @mutex.synchronize { @versions.any? }
+        @mutex.synchronize { @queued + @processing - @retry > 0 }
       end
 
       private
@@ -149,7 +160,7 @@ module EventWorker
         @running = true
         @concurrency.times do
           thread = Thread.new do
-            while @running || (@wait_for_completion && busy?)
+            while @running || busy?
               data = shift
               next if data.nil?
 
@@ -161,13 +172,16 @@ module EventWorker
                 # sleep retry_in
                 add_back(owner_id, owner, versions, items)
               end
+
+              # Use nil version as a signal to wake up the version completion thread
+              @completed_versions_queue << nil
             end
           end
           thread.abort_on_exception = true
           @threads << thread
         end
         thread = Thread.new do
-          while @running || !@completed_versions_queue.empty? || (@wait_for_completion && @completed_version < @current_version)
+          while @running || busy? || !@completed_versions_queue.empty?
             version = @completed_versions_queue.pop
             next if version.nil?
 
@@ -181,13 +195,21 @@ module EventWorker
       def ack_one(version, owner_id, quantity = nil)
         return if @versions.dig(version, owner_id).nil?
 
+        ack_quantity = quantity || @versions[version][owner_id]
         left_quantity = \
-          if quantity && quantity < @versions[version][owner_id]
-            @versions[version][owner_id] -= quantity
+          if ack_quantity < @versions[version][owner_id]
+            @versions[version][owner_id] -= ack_quantity
           else
             @versions[version].delete(owner_id)
             0
           end
+
+        @processing -= 1
+        @processed += 1
+        if @retry_owner_ids.include?(owner_id)
+          @retry -= 1
+          @retry_owner_ids.delete(owner_id)
+        end
 
         # If version is empty, mark it as complete
         completed = @versions[version].empty? ? complete_version(version) : 0
