@@ -86,17 +86,6 @@ module EventWorker
         end
       end
 
-      # Acknowledge processing for a owner_id in a version
-      # @param version [Integer] The version to acknowledge
-      # @param owner_id [Integer, String] The owner_id to acknowledge
-      # @param quantity [Integer] The number of items to acknowledge
-      # @return [Array(Integer, Integer), nil] [left_quantity, completed_versions] or nil if owner_id is not in the pool
-      def ack(version, owner_id, quantity = nil)
-        @mutex.synchronize do
-          ack_one(version, owner_id, quantity)
-        end
-      end
-
       # Acknowledge processing for a owner_id in multiple versions
       # @param owner_id [Integer, String] The owner_id to acknowledge
       # @param versions [Array] The versions to acknowledge
@@ -150,36 +139,6 @@ module EventWorker
       # @return [Boolean] Whether any worker is busy
       def busy?
         @mutex.synchronize { @versions.any? }
-      end
-
-      # Returns the owner_ids in the pool
-      # @return [Array] The owner_ids in the pool
-      def owner_ids
-        @mutex.synchronize { @pool.keys }
-      end
-
-      # Returns the number of items for a given owner_id
-      # @param owner_id [Integer, String] The shop ID
-      # @return [Integer] The number of items for the owner_id
-      def count_for(owner_id)
-        @mutex.synchronize { @pool.dig(owner_id, ITEMS)&.size || 0 }
-      end
-
-      # Returns the pending versions
-      # @return [Array] The pending versions
-      def pending_versions
-        @mutex.synchronize { @versions.keys }
-      end
-
-      # Clears the pool and all version tracking
-      # @return [Hash] The empty pool
-      def clear
-        @mutex.synchronize do
-          @pool.clear
-          @versions.clear
-          @completed_versions.clear
-          @current_version = 0
-        end
       end
 
       private

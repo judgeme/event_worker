@@ -5,7 +5,8 @@ require 'rails_helper'
 module EventWorker
   module Utils
     describe PushPool do
-      let(:push_pool) { described_class.new }
+      let(:push_pool) { described_class.new(&processor) }
+      let(:processor) { ->(*_args) { nil } }
       let(:owner_id_1) { 1 }
       let(:owner_id_2) { 2 }
       let(:owner_id_3) { 3 }
@@ -41,22 +42,21 @@ module EventWorker
         context 'when batch data is empty' do
           let(:batch) { {} }
 
-          it 'returns nil' do
-            expect(version).to be_nil
+          it 'still returns a version number' do
+            expect(version).to eq(1)
           end
         end
 
         context 'when batch data has empty items' do
           let(:batch) { { owner_id_1 => items_1, owner_id_2 => {} } }
 
-          it 'does not skip empty item arrays' do
+          it 'skips empty item array' do
             expect(version).to eq(1)
             expect(push_pool.instance_variable_get(:@pool)).to eq(
-              owner_id_1 => [owner_id_1, [1], items_1],
-              owner_id_2 => [owner_id_2, [1], {}]
+              owner_id_1 => [owner_id_1, [1], items_1]
             )
             expect(push_pool.instance_variable_get(:@versions)).to eq(
-              1 => { owner_id_1 => items_1.size, owner_id_2 => 0 }
+              1 => { owner_id_1 => items_1.size }
             )
           end
         end
@@ -116,94 +116,14 @@ module EventWorker
         end
       end
 
-      describe '#ack' do
-        subject(:result) { push_pool.ack(version, owner_id, quantity) }
-        let(:owner_id) { owner_id_1 }
-        let(:quantity) { nil }
-
-        context 'when version does not exist' do
-          let(:version) { 999 }
-          it { is_expected.to be nil }
-        end
-
-        context 'when version exists' do
-          let(:version) { version_1 }
-          let!(:version_1) { push_pool.add(owner_id_1 => items_1, owner_id_2 => items_2) }
-
-          context 'when owner_id does not exist in version' do
-            let(:owner_id) { 999 }
-            it { is_expected.to be nil }
-          end
-
-          context 'when owner_id exists in version' do
-            it 'removes owner_id from version' do
-              expect(result).to eq([0, 0])
-              expect(push_pool.instance_variable_get(:@versions)).to eq(
-                version_1 => { owner_id_2 => items_2.size }
-              )
-            end
-
-            context 'when quantity is specified' do
-              let(:quantity) { 1 }
-
-              it 'reduces quantity from owner_id' do
-                expect(result).to eq([items_1.size - 1, 0])
-                expect(push_pool.instance_variable_get(:@versions)).to eq(
-                  version_1 => { owner_id_1 => items_1.size - 1, owner_id_2 => items_2.size }
-                )
-              end
-            end
-
-            context 'when owner_id is the last one in version' do
-              before { push_pool.ack(version, owner_id_2) }
-
-              it 'completes the version' do
-                expect(result).to eq([0, 1])
-                expect(push_pool.instance_variable_get(:@versions)).to be_empty
-              end
-            end
-          end
-        end
-
-        context 'when multiple versions exist' do
-          let!(:version_1) { push_pool.add(owner_id_1 => items_1) }
-          let!(:version_2) { push_pool.add(owner_id_2 => items_2) }
-
-          context 'when completing the smallest version' do
-            let(:version) { version_1 }
-
-            it 'completes the version' do
-              expect(result).to eq([0, 1])
-              expect(push_pool.instance_variable_get(:@versions)).to eq(
-                version_2 => { owner_id_2 => items_2.size }
-              )
-              expect(push_pool.instance_variable_get(:@completed_versions)).to be_empty
-            end
-          end
-
-          context 'when completing a non-smallest version' do
-            let(:version) { version_2 }
-            let(:owner_id) { owner_id_2 }
-
-            it 'does not complete the version' do
-              expect(result).to eq([0, 0])
-              expect(push_pool.instance_variable_get(:@versions)).to eq(
-                version_1 => { owner_id_1 => items_1.size }
-              )
-              expect(push_pool.instance_variable_get(:@completed_versions)).to eq([version_2])
-            end
-          end
-        end
-      end
-
       describe '#ack_for' do
         subject(:result) do
-          owner_id, _items = push_pool.shift
-          push_pool.ack_for(owner_id)
+          owner_id, _owner, versions, _items = push_pool.shift
+          push_pool.ack_for(owner_id, versions)
         end
-        let!(:version_1) { push_pool.add(owner_id_1 => items_1) }
-        let!(:version_2) { push_pool.add(owner_id_2 => items_2) }
-        let!(:version_3) { push_pool.add(owner_id_1 => items_3) }
+        let!(:version_1) { push_pool.add({ owner_id_1 => items_1 }) }
+        let!(:version_2) { push_pool.add({ owner_id_2 => items_2 }) }
+        let!(:version_3) { push_pool.add({ owner_id_1 => items_3 }) }
 
         context 'when completing multiple versions' do
           it 'completes the version' do
@@ -221,7 +141,8 @@ module EventWorker
           push_pool.on_version_complete { |version| callback_called = (version == 1) }
 
           push_pool.add({ owner_id_1 => items_1 })
-          push_pool.ack(1, owner_id_1)
+          push_pool.ack_for(owner_id_1, [1])
+          push_pool.stop
 
           expect(callback_called).to be true
         end
@@ -232,7 +153,8 @@ module EventWorker
           push_pool.on_version_complete { |version| versions << version * 10 }
 
           push_pool.add({ owner_id_1 => items_1 })
-          push_pool.ack(1, owner_id_1)
+          push_pool.ack_for(owner_id_1, [1])
+          push_pool.stop
 
           expect(versions).to eq([1, 10])
         end
@@ -262,48 +184,9 @@ module EventWorker
         end
       end
 
-      describe '#owner_ids' do
-        it 'returns owner_ids in pool' do
-          expect(push_pool.owner_ids).to be_empty
-
-          push_pool.add({ owner_id_1 => items_1, owner_id_2 => items_2 })
-          expect(push_pool.owner_ids).to contain_exactly(owner_id_1, owner_id_2)
-        end
-      end
-
-      describe '#count_for' do
-        it 'returns number of items for owner_id' do
-          expect(push_pool.count_for(owner_id_1)).to eq(0)
-
-          push_pool.add({ owner_id_1 => items_1 })
-          expect(push_pool.count_for(owner_id_1)).to eq(2)
-        end
-      end
-
-      describe '#pending_versions' do
-        it 'returns pending versions' do
-          expect(push_pool.pending_versions).to be_empty
-
-          push_pool.add({ owner_id_1 => items_1 })
-          push_pool.add({ owner_id_2 => items_2 })
-
-          expect(push_pool.pending_versions).to eq([1, 2])
-        end
-      end
-
-      describe '#clear' do
-        it 'clears pool and version tracking' do
-          push_pool.add({ owner_id_1 => items_1 })
-          push_pool.clear
-
-          expect(push_pool.instance_variable_get(:@pool)).to be_empty
-          expect(push_pool.instance_variable_get(:@versions)).to be_empty
-          expect(push_pool.instance_variable_get(:@completed_versions)).to be_empty
-          expect(push_pool.instance_variable_get(:@current_version)).to eq(0)
-        end
-      end
-
       describe 'thread safety' do
+        let(:processor) { nil }
+
         it 'handles concurrent access' do
           threads = []
           10.times do |i|
@@ -318,7 +201,7 @@ module EventWorker
         end
       end
 
-      describe 'complete_version' do
+      describe '#complete_version' do
         it 'processes versions in order' do
           completed_versions = []
           push_pool.on_version_complete { |version| completed_versions << version }
@@ -335,6 +218,7 @@ module EventWorker
 
           # Complete version 1
           push_pool.send(:complete_version, 1)
+          push_pool.stop
 
           # Now versions 1 and 2 should be processed
           expect(completed_versions).to eq([1, 2])
