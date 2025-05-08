@@ -6,8 +6,8 @@ module EventWorker
       VERSIONS = 1
       ITEMS = 2
 
-      def initialize(num_threads: 1, wait_for_completion: false, &block)
-        @num_threads = num_threads
+      def initialize(concurrency: 1, wait_for_completion: false, &block)
+        @concurrency = concurrency
         @wait_for_completion = wait_for_completion
 
         @pool = {}                                # owner_id => [items]
@@ -114,7 +114,7 @@ module EventWorker
         @mutex.synchronize do
           @running = false
           @completed_versions_queue << nil
-          @num_threads.times { @cond_var.signal }
+          @concurrency.times { @cond_var.signal }
         end
 
         @threads.each(&:join)
@@ -147,7 +147,7 @@ module EventWorker
         return if @running
 
         @running = true
-        @num_threads.times do
+        @concurrency.times do
           thread = Thread.new do
             while @running || (@wait_for_completion && busy?)
               data = shift
