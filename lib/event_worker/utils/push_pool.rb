@@ -1,13 +1,20 @@
 module EventWorker
   module Utils
     class PushPool
+      CONCURRENCY = 10
+      WIDTH_LIMIT = 100
+      HEIGHT_LIMIT = 1000
+
       BATCH_SIZE = 1000
       OWNER = 0
       VERSIONS = 1
       ITEMS = 2
 
-      def initialize(concurrency: 1, &block)
+      def initialize(concurrency: CONCURRENCY, width_limit: WIDTH_LIMIT, height_limit: HEIGHT_LIMIT, logger: nil, &block)
         @concurrency = concurrency
+        @width_limit = width_limit
+        @height_limit = height_limit
+        @logger = logger
 
         @queued = 0
         @processing = 0
@@ -21,8 +28,10 @@ module EventWorker
         @version_complete_callbacks = []          # callbacks for completed versions
         @current_version = 0
         @completed_version = 0
+        @locking = nil                            # [version, owner_id]
         @mutex = Mutex.new
-        @cond_var = ConditionVariable.new
+        @add_cond_var = ConditionVariable.new
+        @remove_cond_var = ConditionVariable.new
 
         @threads = []
         @running = false
@@ -49,6 +58,17 @@ module EventWorker
           batch.each do |owner_id, items|
             next if items.empty?
 
+            while @pool.size >= @width_limit
+              @locking = [version, nil]
+              @remove_cond_var.wait(@mutex)
+            end
+
+            while @pool.key?(owner_id) && @pool[owner_id][ITEMS].size >= @height_limit
+              @locking = [version, owner_id]
+              @remove_cond_var.wait(@mutex)
+            end
+
+            @locking = nil unless @locking.nil?
             @queued += 1
             items_count += items.size
             owner = owners.nil? ? owner_id : owners[owner_id]
@@ -58,7 +78,8 @@ module EventWorker
             @pool[owner_id][ITEMS].merge!(items)
           end
 
-          @cond_var.signal
+          @add_cond_var.signal
+          @logger&.info("PushPool#add version=#{version} width=#{batch.size} count=#{items_count}")
           complete_version(version) if items_count == 0
           version
         end
@@ -73,7 +94,8 @@ module EventWorker
             @retry += 1
             @retry_owner_ids << owner_id
           end
-          @cond_var.signal
+          @add_cond_var.signal
+          @logger&.warn("PushPool#add_back owner_id=#{owner_id} versions=#{versions} count=#{items.size}")
         end
       end
 
@@ -84,7 +106,7 @@ module EventWorker
         @mutex.synchronize do
           if blocking
             while @running && @pool.empty?
-              @cond_var.wait(@mutex)
+              @add_cond_var.wait(@mutex)
             end
           end
 
@@ -93,6 +115,8 @@ module EventWorker
           owner_id, data = @pool.shift
           @queued -= 1
           @processing += 1
+          @remove_cond_var.signal
+          @logger&.debug("#{self.class.name}#shift owner_id=#{owner_id} versions=#{data[VERSIONS]} count=#{data[ITEMS].size}")
           [owner_id, data[OWNER], data[VERSIONS], data[ITEMS]]
         end
       end
@@ -106,7 +130,9 @@ module EventWorker
           results = versions.map do |version|
             ack_one(version, owner_id)
           end
-          versions.zip(results).to_h
+          results_hash = versions.zip(results).to_h
+          @logger&.debug("#{self.class.name}#ack_for owner_id=#{owner_id} results=#{results_hash}")
+          results_hash
         end
       end
 
@@ -125,7 +151,7 @@ module EventWorker
         @mutex.synchronize do
           @running = false
           @completed_versions_queue << nil
-          @concurrency.times { @cond_var.signal }
+          @concurrency.times { @add_cond_var.signal }
         end
 
         @threads.each(&:join)
@@ -230,6 +256,7 @@ module EventWorker
           @completed_versions_queue << @completed_version
           count += 1
         end
+        @logger&.info("#{self.class.name}#complete_version version=#{version}#{count == 0 ? '-1' : (count == 1 ? '' : "+#{count-1}")}")
         count
       end
     end

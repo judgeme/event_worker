@@ -5,8 +5,8 @@ require 'rails_helper'
 module EventWorker
   module Utils
     describe PushPool do
-      let(:push_pool) { described_class.new(&processor) }
-      let(:processor) { ->(*_args) { nil } }
+      let(:push_pool) { described_class.new(logger: Logger.new(STDOUT), &processor) }
+      let(:processor) { nil }
       let(:owner_id_1) { 1 }
       let(:owner_id_2) { 2 }
       let(:owner_id_3) { 3 }
@@ -136,6 +136,8 @@ module EventWorker
       end
 
       describe '#on_version_complete' do
+        let(:processor) { ->(*_args) { nil } }
+
         it 'registers callback for completed versions' do
           callback_called = false
           push_pool.on_version_complete { |version| callback_called = (version == 1) }
@@ -185,8 +187,6 @@ module EventWorker
       end
 
       describe 'thread safety' do
-        let(:processor) { nil }
-
         it 'handles concurrent access' do
           threads = []
           10.times do |i|
@@ -202,6 +202,8 @@ module EventWorker
       end
 
       describe '#complete_version' do
+        let(:processor) { ->(*_args) { nil } }
+
         it 'processes versions in order' do
           completed_versions = []
           push_pool.on_version_complete { |version| completed_versions << version }
