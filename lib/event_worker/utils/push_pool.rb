@@ -63,7 +63,7 @@ module EventWorker
               @remove_cond_var.wait(@mutex)
             end
 
-            while @pool.key?(owner_id) && @pool[owner_id][ITEMS].size >= @height_limit
+            while @pool.key?(owner_id) && (@pool[owner_id][ITEMS].size + items.size) > @height_limit
               @locking = [version, owner_id]
               @remove_cond_var.wait(@mutex)
             end
