@@ -198,17 +198,19 @@ module EventWorker
       end
 
       describe 'thread safety' do
+        let(:width_limit) { 100 }
+
         it 'handles concurrent access' do
           threads = []
-          10.times do |i|
+          width_limit.times do |i|
             threads << Thread.new do
               push_pool.add({ i => { i => "item#{i}" } })
             end
           end
           threads.each(&:join)
 
-          expect(push_pool.size).to eq(10)
-          expect(push_pool.instance_variable_get(:@current_version)).to eq(10)
+          expect(push_pool.size).to eq(width_limit)
+          expect(push_pool.instance_variable_get(:@current_version)).to eq(width_limit)
         end
       end
 

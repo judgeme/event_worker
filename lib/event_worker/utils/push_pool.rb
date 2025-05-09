@@ -263,7 +263,7 @@ module EventWorker
           @completed_versions_queue << @completed_version
           count += 1
         end
-        @logger&.info("#{self.class.name}#complete_version version=#{version}#{count == 0 ? '-1' : (count == 1 ? '' : "+#{count-1}")}")
+        @logger&.info("PushPool#complete_version version=#{version}#{count == 0 ? '-1' : (count == 1 ? '' : "+#{count-1}")}")
         count
       end
     end
