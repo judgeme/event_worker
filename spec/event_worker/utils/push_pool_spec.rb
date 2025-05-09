@@ -5,7 +5,9 @@ require 'rails_helper'
 module EventWorker
   module Utils
     describe PushPool do
-      let(:push_pool) { described_class.new(logger: Logger.new(STDOUT), &processor) }
+      let(:push_pool) { described_class.new(width_limit: width_limit, height_limit: height_limit, logger: Logger.new(STDOUT), &processor) }
+      let(:width_limit) { 3 }
+      let(:height_limit) { 5 }
       let(:processor) { nil }
       let(:owner_id_1) { 1 }
       let(:owner_id_2) { 2 }
@@ -186,6 +188,15 @@ module EventWorker
         end
       end
 
+      describe '#count_for' do
+        it 'returns number of items for owner_id' do
+          expect(push_pool.count_for(owner_id_1)).to eq(0)
+
+          push_pool.add({ owner_id_1 => items_1 })
+          expect(push_pool.count_for(owner_id_1)).to eq(2)
+        end
+      end
+
       describe 'thread safety' do
         it 'handles concurrent access' do
           threads = []
@@ -198,6 +209,172 @@ module EventWorker
 
           expect(push_pool.size).to eq(10)
           expect(push_pool.instance_variable_get(:@current_version)).to eq(10)
+        end
+      end
+
+      describe 'width and height limits' do
+        it 'initializes with the specified width and height limits' do
+          expect(push_pool.instance_variable_get(:@width_limit)).to eq(width_limit)
+          expect(push_pool.instance_variable_get(:@height_limit)).to eq(height_limit)
+        end
+
+        context 'when reaching width limit' do
+          it 'blocks when adding more owner_ids than the width limit' do
+            # Fill the pool to the width limit
+            width_limit.times do |i|
+              push_pool.add({ i => { i => "item_#{i}" } })
+            end
+
+            # Verify the pool is at width limit
+            expect(push_pool.size).to eq(width_limit)
+
+            # Set up a thread to add another owner_id
+            thread_completed = false
+            thread = Thread.new do
+              push_pool.add({ (width_limit + 1) => { (width_limit + 1) => 'new_item' } })
+              thread_completed = true
+            end
+
+            # Verify the thread is blocked
+            sleep 0.1
+            expect(thread_completed).to be false
+            expect(thread.status).to eq('sleep')
+
+            # Shift an item to make room
+            push_pool.shift
+
+            # Verify the thread completes
+            sleep 0.1
+            expect(thread_completed).to be true
+            expect(push_pool.size).to eq(width_limit)
+          end
+
+          it 'sets @locking with version and nil when waiting on width limit' do
+            # Fill the pool to the width limit
+            version = nil
+            width_limit.times do |i|
+              version = push_pool.add({ i => { i => "item_#{i}" } })
+            end
+
+            # Set up a thread to add another owner_id
+            thread = Thread.new do
+              push_pool.add({ (width_limit + 1) => { (width_limit + 1) => 'new_item' } })
+            end
+
+            # Give the thread time to hit the width limit
+            sleep 0.1
+
+            # Verify @locking is set correctly
+            locking = push_pool.instance_variable_get(:@locking)
+            expect(locking[0]).to eq(version + 1) # Next version
+            expect(locking[1]).to be_nil
+
+            # Clean up
+            push_pool.shift
+            thread.join
+          end
+        end
+
+        context 'when reaching height limit' do
+          it 'blocks when adding more items than the height limit for an owner_id' do
+            # Add items up to just below the height limit
+            push_pool.add({ owner_id_1 => (height_limit - 1).times.map { |i| [i + 1, "item_#{i}"] }.to_h })
+
+            # Verify the items count
+            expect(push_pool.count_for(owner_id_1)).to eq(height_limit - 1)
+
+            # Set up a thread to add more items to the same owner_id
+            thread_completed = false
+            thread = Thread.new do
+              push_pool.add({ owner_id_1 => { (height_limit + 1) => 'overflow_item1', (height_limit + 2) => 'overflow_item2' } })
+              thread_completed = true
+            end
+
+            # Verify the thread is blocked
+            sleep 0.1
+            expect(thread_completed).to be false
+            expect(thread.status).to eq('sleep')
+
+            # Shift items to make room
+            push_pool.shift
+
+            # Verify the thread completes
+            sleep 0.1
+            expect(thread_completed).to be true
+          end
+
+          it 'sets @locking with version and owner_id when waiting on height limit' do
+            # Add items up to the height limit
+            version = push_pool.add({ owner_id_1 => height_limit.times.map { |i| [i + 1, "item_#{i}"] }.to_h })
+
+            # Set up a thread to add more items to the same owner_id
+            thread = Thread.new do
+              push_pool.add({ owner_id_1 => { (height_limit + 1) => 'overflow_item' } })
+            end
+
+            # Give the thread time to hit the height limit
+            sleep 0.1
+            # debugger
+
+            # Verify @locking is set correctly
+            locking = push_pool.instance_variable_get(:@locking)
+            expect(locking[0]).to eq(version + 1) # Next version
+            expect(locking[1]).to eq(owner_id_1)
+
+            # Clean up
+            push_pool.shift
+            thread.join
+          end
+        end
+
+        it 'allows adding items after shifting to make room' do
+          # Fill the pool to the width limit
+          width_limit.times do |i|
+            push_pool.add({ i => { i => ["item_#{i}"] } })
+          end
+
+          # Shift an item to make room
+          push_pool.shift
+
+          # Add a new owner_id
+          version = push_pool.add({ -1 => { -1 => ['new_item'] } })
+
+          # Verify the new item was added
+          expect(push_pool.size).to eq(width_limit)
+          expect(push_pool.instance_variable_get(:@versions)).to include(version)
+        end
+
+        it 'signals waiting threads when items are shifted' do
+          # Fill the pool to the width limit
+          width_limit.times do |i|
+            push_pool.add({ i => { i => ["item_#{i}"] } })
+          end
+
+          # Set up multiple threads waiting to add items
+          threads = []
+          thread_completed = Array.new(3, false)
+
+          3.times do |i|
+            threads << Thread.new do
+              idx = i
+              push_pool.add({ (width_limit + idx) => { (width_limit + idx) => ["waiting_item_#{idx}"] } })
+              thread_completed[idx] = true
+            end
+          end
+
+          # Verify the threads are blocked
+          sleep 0.1
+          expect(thread_completed.count(true)).to eq(0)
+
+          # Shift items one by one and verify threads complete in order
+          width_limit.times do |i|
+            push_pool.shift
+            sleep 0.1
+            expect(thread_completed.count(true)).to eq(i + 1)
+          end
+
+          # Clean up
+          threads.each(&:join)
         end
       end
 

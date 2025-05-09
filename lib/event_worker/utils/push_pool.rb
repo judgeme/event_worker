@@ -178,6 +178,13 @@ module EventWorker
         @mutex.synchronize { @queued + @processing - @retry > 0 }
       end
 
+      # Returns the number of items for a given owner_id
+      # @param owner_id [Integer, String] The shop ID
+      # @return [Integer] The number of items for the owner_id
+      def count_for(owner_id)
+        @mutex.synchronize { @pool.dig(owner_id, ITEMS)&.size || 0 }
+      end
+
       private
 
       def run
