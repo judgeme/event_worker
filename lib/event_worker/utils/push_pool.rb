@@ -19,8 +19,7 @@ module EventWorker
         @queued = 0
         @processing = 0
         @processed = 0
-        @retry = 0
-        @retry_owner_ids = Set.new
+        @retries = Set.new
         @pool = {}                                # owner_id => [items]
         @versions = {}                            # version => { owner_id => items_count }
         @completed_versions = []                  # sorted versions that have been completed
@@ -28,7 +27,6 @@ module EventWorker
         @version_complete_callbacks = []          # callbacks for completed versions
         @current_version = 0
         @completed_version = 0
-        @locking = nil                            # [version, owner_id]
         @mutex = Mutex.new
         @add_cond_var = ConditionVariable.new
         @remove_cond_var = ConditionVariable.new
@@ -47,32 +45,30 @@ module EventWorker
       # @return [Integer] The version assigned to this batch
       def add(batch, owners: nil, client_version: nil)
         @mutex.synchronize do
-          items_count = 0
           @current_version += 1
           raise 'invalid client_version' unless client_version.nil? || client_version == @current_version
 
+          items_count = 0
           version = @current_version
           @versions[version] = {}
+          batch.each do |owner_id, items|
+            next if items.empty?
+
+            @queued += 1
+            items_count += items.size
+            @versions[version][owner_id] = items.size
+          end
+          if items_count == 0
+            complete_version(version)
+            return version
+          end
 
           # Add items to pool for each owner_id
           batch.each do |owner_id, items|
             next if items.empty?
 
-            while @pool.size >= @width_limit
-              @locking = [version, nil]
-              @remove_cond_var.wait(@mutex)
-            end
-
-            while @pool.key?(owner_id) && (@pool[owner_id][ITEMS].size + items.size) > @height_limit
-              @locking = [version, owner_id]
-              @remove_cond_var.wait(@mutex)
-            end
-
-            @locking = nil unless @locking.nil?
-            @queued += 1
-            items_count += items.size
+            wait_for_space(owner_id, items)
             owner = owners.nil? ? owner_id : owners[owner_id]
-            @versions[version][owner_id] = items.size
             @pool[owner_id] ||= [owner, [], {}]
             @pool[owner_id][VERSIONS] << version
             @pool[owner_id][ITEMS].merge!(items)
@@ -80,19 +76,20 @@ module EventWorker
 
           @add_cond_var.signal
           @logger&.info("PushPool#add version=#{version} width=#{batch.size} count=#{items_count}")
-          complete_version(version) if items_count == 0
           version
         end
       end
 
       def add_back(owner_id, owner, versions, items)
         @mutex.synchronize do
-          @pool[owner_id] = [owner, versions, items]
-          @processing -= 1
-          @queued += 1
-          unless @retry_owner_ids.include?(owner_id)
-            @retry += 1
-            @retry_owner_ids << owner_id
+          wait_for_space(owner_id, items)
+          @pool[owner_id] ||= [owner, [], {}]
+          @pool[owner_id][VERSIONS] += versions
+          @pool[owner_id][ITEMS].reverse_merge!(items)
+          @processing -= versions.size
+          @queued += versions.size
+          versions.each do |version|
+            @retries << [owner_id, version]
           end
           @add_cond_var.signal
           @logger&.warn("PushPool#add_back owner_id=#{owner_id} versions=#{versions} count=#{items.size}")
@@ -113,8 +110,8 @@ module EventWorker
           return nil if @pool.empty?
 
           owner_id, data = @pool.shift
-          @queued -= 1
-          @processing += 1
+          @queued -= data[VERSIONS].size
+          @processing += data[VERSIONS].size
           @remove_cond_var.signal
           @logger&.debug("#{self.class.name}#shift owner_id=#{owner_id} versions=#{data[VERSIONS]} count=#{data[ITEMS].size}")
           [owner_id, data[OWNER], data[VERSIONS], data[ITEMS]]
@@ -175,7 +172,7 @@ module EventWorker
       # Returns true if any worker is busy
       # @return [Boolean] Whether any worker is busy
       def busy?
-        @mutex.synchronize { @queued + @processing - @retry > 0 }
+        @mutex.synchronize { @queued + @processing - @retries.size > 0 }
       end
 
       # Returns the number of items for a given owner_id
@@ -221,8 +218,14 @@ module EventWorker
             @version_complete_callbacks.each { |callback| callback.call(version) }
           end
         end
-        @threads << thread
         thread.abort_on_exception = true
+        @threads << thread
+      end
+
+      def wait_for_space(owner_id, items)
+        while (!@pool.key?(owner_id) && @pool.size >= @width_limit) || (@pool.key?(owner_id) && (@pool[owner_id][ITEMS].size + items.size) > @height_limit)
+          @remove_cond_var.wait(@mutex)
+        end
       end
 
       def ack_one(version, owner_id, quantity = nil)
@@ -239,10 +242,7 @@ module EventWorker
 
         @processing -= 1
         @processed += 1
-        if @retry_owner_ids.include?(owner_id)
-          @retry -= 1
-          @retry_owner_ids.delete(owner_id)
-        end
+        @retries.delete([owner_id, version])
 
         # If version is empty, mark it as complete
         completed = @versions[version].empty? ? complete_version(version) : 0
@@ -263,7 +263,7 @@ module EventWorker
           @completed_versions_queue << @completed_version
           count += 1
         end
-        @logger&.info("PushPool#complete_version version=#{version}#{count == 0 ? '-1' : (count == 1 ? '' : "+#{count-1}")}")
+        @logger&.info("PushPool#complete_version version=#{version}#{count == 0 ? (@completed_version - version) : (count == 1 ? '' : "+#{count-1}")}")
         count
       end
     end
