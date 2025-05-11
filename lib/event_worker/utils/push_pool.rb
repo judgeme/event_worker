@@ -199,7 +199,7 @@ module EventWorker
               if retry_in.nil?
                 ack_for(owner_id, versions)
               else
-                # sleep retry_in
+                sleep retry_in
                 add_back(owner_id, owner, versions, items)
               end
 
