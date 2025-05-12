@@ -80,7 +80,8 @@ module EventWorker
         end
       end
 
-      def add_back(owner_id, owner, versions, items)
+      def add_back(owner_id, owner, versions, items, after: nil)
+        sleep after if after.present?
         @mutex.synchronize do
           wait_for_space(owner_id, items)
           @pool[owner_id] ||= [owner, [], {}]
@@ -92,7 +93,7 @@ module EventWorker
             @retries << [owner_id, version]
           end
           @add_cond_var.signal
-          @logger&.warn("PushPool#add_back owner_id=#{owner_id} versions=#{versions} count=#{items.size}")
+          @logger&.warn("PushPool#add_back owner_id=#{owner_id} versions=#{versions} count=#{items.size} after=#{after}")
         end
       end
 
@@ -195,12 +196,11 @@ module EventWorker
               next if data.nil?
 
               owner_id, owner, versions, items = data
-              retry_in = @processor.call(owner_id, owner, versions, items)
-              if retry_in.nil?
+              retry_after = @processor.call(owner_id, owner, versions, items)
+              if retry_after.nil?
                 ack_for(owner_id, versions)
               else
-                sleep retry_in
-                add_back(owner_id, owner, versions, items)
+                add_back(owner_id, owner, versions, items, after: retry_after)
               end
 
               # Use nil version as a signal to wake up the version completion thread
