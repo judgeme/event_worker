@@ -86,4 +86,55 @@ describe EventWorker::Utils::Offset do
 
     it { is_expected.to eq('1697819303625-0') }
   end
+
+  describe '.offset_to_time' do
+    subject(:time) { described_class.offset_to_time(offset) }
+    let(:offset) { "#{expected_time.strftime('%Q')}-#{sequence}" }
+    let(:sequence) { Faker::Number.number(digits: 3) }
+    let(:expected_time) { DateTime.now }
+
+    it 'converts an offset string to a DateTime' do
+      expect(time.strftime('%Q')).to eq(expected_time.strftime('%Q'))
+    end
+
+    context 'when very large timestamps' do
+      let(:expected_time) { DateTime.now + 100.years }
+
+      it 'handles very large timestamps' do
+        expect(time.strftime('%Q')).to eq(expected_time.strftime('%Q'))
+      end
+    end
+
+    context 'when very small timestamps' do
+      let(:expected_time) { DateTime.now - 50.years }
+
+      it 'handles very small timestamps' do
+        expect(time.strftime('%Q')).to eq(expected_time.strftime('%Q'))
+      end
+    end
+
+    context 'when no sequence number' do
+      let(:offset) { "#{expected_time.strftime('%Q')}" }
+
+      it 'handles offsets with no sequence number' do
+        expect(time.strftime('%Q')).to eq(expected_time.strftime('%Q'))
+      end
+    end
+
+    context 'when multiple hyphens' do
+      let(:offset) { "#{expected_time.strftime('%Q')}-123-456" }
+
+      it 'handles offsets with multiple hyphens' do
+        expect(time.strftime('%Q')).to eq(expected_time.strftime('%Q'))
+      end
+    end
+
+    context 'when non-numeric timestamps' do
+      let(:offset) { "abc-123" }
+
+      it 'raises an error for non-numeric timestamps' do
+        expect { time }.to raise_error(ArgumentError)
+      end
+    end
+  end
 end
