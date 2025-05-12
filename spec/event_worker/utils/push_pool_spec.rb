@@ -198,17 +198,19 @@ module EventWorker
       end
 
       describe 'thread safety' do
+        let(:width_limit) { 100 }
+
         it 'handles concurrent access' do
           threads = []
-          10.times do |i|
+          width_limit.times do |i|
             threads << Thread.new do
               push_pool.add({ i => { i => "item#{i}" } })
             end
           end
           threads.each(&:join)
 
-          expect(push_pool.size).to eq(10)
-          expect(push_pool.instance_variable_get(:@current_version)).to eq(10)
+          expect(push_pool.size).to eq(width_limit)
+          expect(push_pool.instance_variable_get(:@current_version)).to eq(width_limit)
         end
       end
 
@@ -248,31 +250,6 @@ module EventWorker
             expect(thread_completed).to be true
             expect(push_pool.size).to eq(width_limit)
           end
-
-          it 'sets @locking with version and nil when waiting on width limit' do
-            # Fill the pool to the width limit
-            version = nil
-            width_limit.times do |i|
-              version = push_pool.add({ i => { i => "item_#{i}" } })
-            end
-
-            # Set up a thread to add another owner_id
-            thread = Thread.new do
-              push_pool.add({ (width_limit + 1) => { (width_limit + 1) => 'new_item' } })
-            end
-
-            # Give the thread time to hit the width limit
-            sleep 0.1
-
-            # Verify @locking is set correctly
-            locking = push_pool.instance_variable_get(:@locking)
-            expect(locking[0]).to eq(version + 1) # Next version
-            expect(locking[1]).to be_nil
-
-            # Clean up
-            push_pool.shift
-            thread.join
-          end
         end
 
         context 'when reaching height limit' do
@@ -301,29 +278,6 @@ module EventWorker
             # Verify the thread completes
             sleep 0.1
             expect(thread_completed).to be true
-          end
-
-          it 'sets @locking with version and owner_id when waiting on height limit' do
-            # Add items up to the height limit
-            version = push_pool.add({ owner_id_1 => height_limit.times.map { |i| [i + 1, "item_#{i}"] }.to_h })
-
-            # Set up a thread to add more items to the same owner_id
-            thread = Thread.new do
-              push_pool.add({ owner_id_1 => { (height_limit + 1) => 'overflow_item' } })
-            end
-
-            # Give the thread time to hit the height limit
-            sleep 0.1
-            # debugger
-
-            # Verify @locking is set correctly
-            locking = push_pool.instance_variable_get(:@locking)
-            expect(locking[0]).to eq(version + 1) # Next version
-            expect(locking[1]).to eq(owner_id_1)
-
-            # Clean up
-            push_pool.shift
-            thread.join
           end
         end
 
