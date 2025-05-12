@@ -18,6 +18,11 @@ module EventWorker
         def time_to_offset(time)
           time.strftime('%s%3N-0')
         end
+
+        def offset_to_time(offset)
+          timestamp, _sequence = offset.split('-')
+          DateTime.strptime(timestamp, '%Q')
+        end
       end
     end
   end
