@@ -8,7 +8,7 @@ module EventWorker
         @backlog = options[:backlog] || 1
         @running = true
         @tasks = []
-        context = Context.new("#{name} init").merge(options)
+        context = Context.new("#{@name} init").merge(options)
         context.benchmark(:init) do
           restore_last_state(context)
           on_init(context)
