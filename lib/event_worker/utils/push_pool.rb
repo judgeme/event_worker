@@ -20,7 +20,7 @@ module EventWorker
         @processing = 0
         @processed = 0
         @retries = Set.new
-        @pool = {}                                # owner_id => [items]
+        @pool = {}                                # owner_id => [ owner, versions, items ]
         @versions = {}                            # version => { owner_id => items_count }
         @completed_versions = []                  # sorted versions that have been completed
         @completed_versions_queue = Queue.new     # versions that have been completed
@@ -263,7 +263,12 @@ module EventWorker
           @completed_versions_queue << @completed_version
           count += 1
         end
-        @logger&.info("PushPool#complete_version version=#{version}#{count == 0 ? (@completed_version - version) : (count == 1 ? '' : "+#{count-1}")}")
+        if count == 0
+          expecting_version = @completed_version + 1
+          @logger&.info("PushPool#complete_version version=#{version}#{@completed_version - version} versions[#{expecting_version}]=#{@versions[expecting_version]}")
+        else
+          @logger&.info("PushPool#complete_version version=#{version}#{"+#{count-1}" if count > 1}")
+        end
         count
       end
     end
