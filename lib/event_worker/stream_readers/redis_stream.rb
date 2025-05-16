@@ -4,10 +4,12 @@ module EventWorker
   module StreamReaders
     class RedisStream < Base
       def fetch(topics)
-        @db.call(
-          'XREAD', 'COUNT', @batch_size, 'BLOCK', @block_msec,
-          'STREAMS', *topics, *offsets.values_at(*topics).map { |id| id || '0-0' }
-        )
+        @db.with do |conn|
+          conn.call(
+            'XREAD', 'COUNT', @batch_size, 'BLOCK', @block_msec,
+            'STREAMS', *topics, *offsets.values_at(*topics).map { |id| id || '0-0' }
+          )
+        end
       end
 
       def each_entry_with_topic(response)
