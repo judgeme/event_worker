@@ -17,7 +17,7 @@ module EventWorker
         @logger = logger
 
         @queued = 0
-        @processing = 0
+        @processing = Hash.new(0)
         @processed = 0
         @retries = Set.new
         @pool = {}                                # owner_id => [ owner, versions, items ]
@@ -87,7 +87,8 @@ module EventWorker
           @pool[owner_id] ||= [owner, [], {}]
           @pool[owner_id][VERSIONS] += versions
           @pool[owner_id][ITEMS].reverse_merge!(items)
-          @processing -= versions.size
+          @processing[owner_id] -= versions.size
+          @processing.delete(owner_id) if @processing[owner_id] == 0
           @queued += versions.size
           versions.each do |version|
             @retries << [owner_id, version]
@@ -102,17 +103,18 @@ module EventWorker
       # @return [Array(Integer, Object, Array, Array), nil] [owner_id, owner, versions, items] or nil if pool is empty
       def shift(blocking: true)
         @mutex.synchronize do
-          if blocking
-            while @running && @pool.empty?
-              @add_cond_var.wait(@mutex)
-            end
+          owner_id, data = nil, nil
+          loop do
+            owner_id, data = @pool.find { |id, _data| !@processing.key?(id) }
+            break if owner_id.present? || !blocking || !@running
+
+            @add_cond_var.wait(@mutex)
           end
+          return nil if owner_id.nil?
 
-          return nil if @pool.empty?
-
-          owner_id, data = @pool.shift
+          @pool.delete(owner_id)
           @queued -= data[VERSIONS].size
-          @processing += data[VERSIONS].size
+          @processing[owner_id] += data[VERSIONS].size
           @remove_cond_var.signal
           @logger&.debug("#{self.class.name}#shift owner_id=#{owner_id} versions=#{data[VERSIONS]} count=#{data[ITEMS].size}")
           [owner_id, data[OWNER], data[VERSIONS], data[ITEMS]]
@@ -173,7 +175,7 @@ module EventWorker
       # Returns true if any worker is busy
       # @return [Boolean] Whether any worker is busy
       def busy?
-        @mutex.synchronize { @queued + @processing - @retries.size > 0 }
+        @mutex.synchronize { @queued + @processing.values.sum - @retries.size > 0 }
       end
 
       # Returns the number of items for a given owner_id
@@ -240,7 +242,8 @@ module EventWorker
             0
           end
 
-        @processing -= 1
+        @processing[owner_id] -= 1
+        @processing.delete(owner_id) if @processing[owner_id] == 0
         @processed += 1
         @retries.delete([owner_id, version])
 
