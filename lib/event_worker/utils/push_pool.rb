@@ -67,7 +67,7 @@ module EventWorker
           batch.each do |owner_id, items|
             next if items.empty?
 
-            wait_for_space(owner_id, items)
+            wait_for_space(owner_id, items.size)
             owner = owners.nil? ? owner_id : owners[owner_id]
             @pool[owner_id] ||= [owner, [], {}]
             @pool[owner_id][VERSIONS] << version
@@ -83,7 +83,8 @@ module EventWorker
       def add_back(owner_id, owner, versions, items, after: nil)
         sleep after if after.present?
         @mutex.synchronize do
-          wait_for_space(owner_id, items)
+          return false if reaching_limit?(owner_id, items.size)
+
           @pool[owner_id] ||= [owner, [], {}]
           @pool[owner_id][VERSIONS] += versions
           @pool[owner_id][ITEMS].reverse_merge!(items)
@@ -95,6 +96,7 @@ module EventWorker
           end
           @add_cond_var.signal
           @logger&.warn("PushPool#add_back owner_id=#{owner_id} versions=#{versions} count=#{items.size} after=#{after}")
+          true
         end
       end
 
@@ -198,12 +200,7 @@ module EventWorker
               next if data.nil?
 
               owner_id, owner, versions, items = data
-              retry_after = @processor.call(owner_id, owner, versions, items)
-              if retry_after.nil?
-                ack_for(owner_id, versions)
-              else
-                add_back(owner_id, owner, versions, items, after: retry_after)
-              end
+              process(owner_id, owner, versions, items)
 
               # Use nil version as a signal to wake up the version completion thread
               @completed_versions_queue << nil
@@ -224,10 +221,26 @@ module EventWorker
         @threads << thread
       end
 
-      def wait_for_space(owner_id, items)
-        while (!@pool.key?(owner_id) && @pool.size >= @width_limit) || (@pool.key?(owner_id) && (@pool[owner_id][ITEMS].size + items.size) > @height_limit)
+      def process(owner_id, owner, versions, items)
+        retry_after = @processor.call(owner_id, owner, versions, items)
+        if retry_after.nil?
+          ack_for(owner_id, versions)
+        elsif add_back(owner_id, owner, versions, items, after: retry_after)
+          nil
+        else
+          @logger&.warn("PushPool#process owner_id=#{owner_id} versions=#{versions} count=#{items.size} after=#{retry_after}")
+          process(owner_id, owner, versions, items)
+        end
+      end
+
+      def wait_for_space(owner_id, items_count)
+        while reaching_limit?(owner_id, items_count)
           @remove_cond_var.wait(@mutex)
         end
+      end
+
+      def reaching_limit?(owner_id, items_count)
+        (!@pool.key?(owner_id) && @pool.size >= @width_limit) || (@pool.key?(owner_id) && (@pool[owner_id][ITEMS].size + items_count) > @height_limit)
       end
 
       def ack_one(version, owner_id, quantity = nil)
