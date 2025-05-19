@@ -10,11 +10,12 @@ module EventWorker
       VERSIONS = 1
       ITEMS = 2
 
-      def initialize(concurrency: CONCURRENCY, width_limit: WIDTH_LIMIT, height_limit: HEIGHT_LIMIT, logger: nil, &block)
+      def initialize(concurrency: CONCURRENCY, width_limit: WIDTH_LIMIT, height_limit: HEIGHT_LIMIT, logger: nil, on_reaching_limit: nil, &block)
         @concurrency = concurrency
         @width_limit = width_limit
         @height_limit = height_limit
         @logger = logger
+        @fallback_processor = on_reaching_limit
 
         @queued = 0
         @processing = Hash.new(0)
@@ -227,9 +228,12 @@ module EventWorker
           ack_for(owner_id, versions)
         elsif add_back(owner_id, owner, versions, items, after: retry_after)
           nil
-        else
+        elsif @fallback_processor.nil?
           @logger&.warn("PushPool#process owner_id=#{owner_id} versions=#{versions} count=#{items.size} after=#{retry_after}")
           process(owner_id, owner, versions, items)
+        else
+          @fallback_processor.call(owner_id, owner, versions, items)
+          ack_for(owner_id, versions)
         end
       end
 
