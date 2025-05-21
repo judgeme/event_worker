@@ -5,7 +5,7 @@ require 'rails_helper'
 module EventWorker
   module Utils
     describe PushPool do
-      let(:push_pool) { described_class.new(width_limit: width_limit, height_limit: height_limit, logger: Logger.new(STDOUT), &processor) }
+      let(:push_pool) { described_class.new(width_limit: width_limit, height_limit: height_limit, logger: EventWorker::Context.logger, &processor) }
       let(:width_limit) { 3 }
       let(:height_limit) { 5 }
       let(:processor) { nil }
