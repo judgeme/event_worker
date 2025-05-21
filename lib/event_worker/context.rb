@@ -6,7 +6,9 @@ module EventWorker
 
     class << self
       def logger
-        @logger ||= Logger.new(STDOUT)
+        return @logger if defined?(@logger)
+
+        @logger = Logger.new(STDOUT)
       end
 
       def logger=(logger)
