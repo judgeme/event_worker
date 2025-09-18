@@ -20,6 +20,8 @@ module EventWorker
         end
 
         def offset_to_time(offset)
+          return if offset.nil?
+
           timestamp, _sequence = offset.split('-')
           DateTime.strptime(timestamp, '%Q')
         end
