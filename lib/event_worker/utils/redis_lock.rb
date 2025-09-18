@@ -12,7 +12,7 @@ module EventWorker
         def acquire_one_of!(count, redis, key, duration = LOCK_DURATION)
           (1..count).each do |i|
             lock = acquire(redis, "#{key}:#{i}", duration)
-            return lock if lock.present?
+            return [lock, i] if lock.present?
           end
 
           raise "Failed to acquire lock for #{key} after #{count} attempts"
