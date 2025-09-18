@@ -2,9 +2,23 @@ module EventWorker
   module Utils
     class RedisLock
       LOCK_DURATION = 5.minutes
+      REFRESH_SCRIPT = <<~LUA.freeze
+        if redis.call("get", KEYS[1]) == ARGV[1] then
+          return redis.call("set", KEYS[1], ARGV[1], "EX", ARGV[2])
+        else
+          return 0
+        end
+      LUA
+      RELEASE_SCRIPT = <<~LUA.freeze
+        if redis.call("get", KEYS[1]) == ARGV[1] then
+          return redis.call("del", KEYS[1])
+        else
+          return 0
+        end
+      LUA
 
       #@example
-      # lock = EventWorker::Utils::RedisLock.acquire(redis, 'key', 1.minute)
+      # lock, index = EventWorker::Utils::RedisLock.acquire_one_of!(2, redis, 'key', 1.minute)
       # lock.ttl
       # lock.refresh(1.minute)
       # lock.release
@@ -40,19 +54,13 @@ module EventWorker
       end
 
       def refresh(duration = LOCK_DURATION)
-        return false unless token_valid?
-
-        @redis.set(@key, @token, ex: duration, xx: true)
+        # Use a Lua script to atomically check the token and refresh the key
+        @redis.eval(REFRESH_SCRIPT, keys: [@key], argv: [@token, duration]).to_i > 0
       end
 
       def release
-        return false unless token_valid?
-
-        @redis.del(@key).present?
-      end
-
-      def token_valid?
-        @redis.get(@key) == @token
+        # Use a Lua script to atomically check the token and delete the key
+        @redis.eval(RELEASE_SCRIPT, keys: [@key], argv: [@token]).to_i > 0
       end
     end
   end
