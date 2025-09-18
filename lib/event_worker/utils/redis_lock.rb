@@ -21,6 +21,7 @@ module EventWorker
         private
 
         def acquire(redis, key, duration = LOCK_DURATION)
+          # Use time as token to know when the lock was acquired
           token = Time.current.iso8601
           return unless redis.set(key, token, nx: true, ex: duration)
 
@@ -39,14 +40,19 @@ module EventWorker
       end
 
       def refresh(duration = LOCK_DURATION)
+        return false unless token_valid?
+
         @redis.set(@key, @token, ex: duration, xx: true)
       end
 
       def release
-        value = @redis.get(@key)
-        return false unless value == @token
+        return false unless token_valid?
 
         @redis.del(@key).present?
+      end
+
+      def token_valid?
+        @redis.get(@key) == @token
       end
     end
   end
