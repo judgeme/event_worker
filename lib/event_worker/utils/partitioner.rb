@@ -1,5 +1,23 @@
 module EventWorker
   module Utils
+    # Partitioner is used to partition a list of user_ids into a list of partitions.
+    # It is used to ensure that each user_id is only processed by one partition.
+    # It is used to ensure that each worker is processing a fair share of the user_ids.
+    #
+    # @example
+    # partitioner = EventWorker::Utils::Partitioner.new(4, 2)
+    # partitioner.from_percent # => 0.25
+    # partitioner.to_percent # => 0.5
+    # partitioner.accept?('user_1') # => true
+    # partitioner.accept?('user_2') # => false
+    # partitioner.accept?('user_3') # => false
+    # partitioner.accept?('user_4') # => false
+    # partitioner.accept?('user_5') # => true
+    # partitioner.accept?('user_6') # => false
+    # partitioner.accept?('user_7') # => false
+    # partitioner.accept?('user_8') # => false
+    # partitioner.accept?('user_9') # => true
+    # partitioner.accept?('user_10') # => false
     class Partitioner
       RAND_BASE = 2**32 - 1
 
