@@ -26,6 +26,8 @@ module EventWorker
         process_new_events while @running
 
         do_exit
+      rescue StandardError => e
+        do_exit(e)
       end
 
       def process_new_events
@@ -55,7 +57,7 @@ module EventWorker
 
       def on_init(context); end
 
-      def on_exit; end
+      def on_exit(context); end
 
       def before_handle_batch(context, events); end
 
@@ -100,11 +102,15 @@ module EventWorker
         context.flush
       end
 
-      def do_exit
+      def do_exit(error = nil)
         context = Context.new("#{name} exit")
+        unless error.nil?
+          context[:error] = error
+          context.log(error: error.detailed_message)
+        end
         context.benchmark(:exit) do
           @tasks.each { |task| task.on_exit if task.respond_to?(:on_exit) }
-          on_exit
+          on_exit(context)
         end
         context.flush
       end
