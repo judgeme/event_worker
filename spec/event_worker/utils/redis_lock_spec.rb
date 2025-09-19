@@ -16,15 +16,15 @@ RSpec.describe EventWorker::Utils::RedisLock do
       expect(lock2.key).to eq("key:2")
       expect(lock1.valid?).to eq(true)
       expect(lock2.valid?).to eq(true)
-      expect(lock1.ttl).to be_within(1.second).of(5.minutes)
-      expect(lock2.ttl).to be_within(1.second).of(5.minutes)
+      expect(lock1.ttl).to be_within(1.second).of(1.minutes)
+      expect(lock2.ttl).to be_within(1.second).of(1.minutes)
 
       expect(lock1.refresh).to eq(true)
       expect(lock1.release).to eq(true)
       expect(lock1.release).to eq(false)
       expect(lock1.refresh).to eq(false)
       expect(lock1.ttl).to eq(-2)
-      expect(lock2.ttl).to be_within(1.second).of(5.minutes)
+      expect(lock2.ttl).to be_within(1.second).of(1.minutes)
     end
   end
 end

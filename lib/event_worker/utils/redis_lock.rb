@@ -1,7 +1,7 @@
 module EventWorker
   module Utils
     class RedisLock
-      LOCK_DURATION = 5.minutes
+      LOCK_DURATION = 1.minute
       REFRESH_SCRIPT = <<~LUA.freeze
         if redis.call("get", KEYS[1]) == ARGV[1] then
           return redis.call("set", KEYS[1], ARGV[1], "EX", ARGV[2], "XX", true)
