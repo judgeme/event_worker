@@ -15,6 +15,8 @@ module EventWorker
         end
       end
 
+      attr_reader :from_percent, :to_percent
+
       def initialize(partition_count, partition_id)
         @from_percent = (partition_id - 1) / partition_count.to_f
         @to_percent = partition_id / partition_count.to_f
