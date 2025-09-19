@@ -16,7 +16,12 @@ RSpec.describe EventWorker::Utils::RedisLock do
 
     context 'when token is expired' do
       before { $redis.expire(lock.key, -1) }
-      it { is_expected.to eq(true) }
+      it { is_expected.to eq(false) }
+
+      context 'when strict is false' do
+        subject(:result) { lock.refresh(strict: false) }
+        it { is_expected.to eq(true) }
+      end
     end
   end
 
