@@ -72,12 +72,13 @@ module EventWorker
 
       private
 
-      def token_valid?
-        @redis.get(@key) == @token
+      def token_valid?(strict: true)
+        token = @redis.get(@key)
+        (token.nil? && !strict) || token == @token
       end
 
       def refresh_redis
-        return false unless token_valid?
+        return false unless token_valid?(strict: false)
 
         @redis.set(@key, @token, ex: @duration, xx: true)
       end
