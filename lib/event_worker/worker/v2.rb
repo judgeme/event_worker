@@ -28,6 +28,7 @@ module EventWorker
         do_exit
       rescue StandardError => e
         do_exit(e)
+        raise(e)
       end
 
       def process_new_events
