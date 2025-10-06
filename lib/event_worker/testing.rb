@@ -78,6 +78,14 @@ module EventWorker
         def count(topic)
           messages[topic].size
         end
+
+        def first(topic)
+          messages[topic].first
+        end
+
+        def last(topic)
+          messages[topic].last
+        end
       end
     end
 
@@ -95,6 +103,14 @@ module EventWorker
 
       def size
         EventWorker::FakedStreams.count(@topic)
+      end
+
+      def first
+        EventWorker::FakedStreams.first(@topic)
+      end
+
+      def last
+        EventWorker::FakedStreams.last(@topic)
       end
     end
 

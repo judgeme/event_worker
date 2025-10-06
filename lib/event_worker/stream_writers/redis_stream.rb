@@ -28,6 +28,18 @@ module EventWorker
         end
       end
 
+      def first
+        @db.with do |conn|
+          conn.xrange(@topic, '-', '+', count: 1).first
+        end
+      end
+
+      def last
+        @db.with do |conn|
+          conn.xrevrange(@topic, '+', '-', count: 1).first
+        end
+      end
+
       private
 
       def val_to_str(value)
