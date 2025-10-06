@@ -16,7 +16,7 @@ module EventWorker
         end
 
         def time_to_offset(time)
-          time.strftime('%s%3N-0')
+          "#{time.strftime('%s%3N')}-#{time.nsec % 1_000_000}"
         end
 
         def offset_to_time(offset)

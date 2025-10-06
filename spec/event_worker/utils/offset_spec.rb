@@ -84,7 +84,7 @@ describe EventWorker::Utils::Offset do
     let(:time) { '2023-10-20T16:28:23.625441018Z'.to_time }
     subject(:offset) { described_class.time_to_offset(time) }
 
-    it { is_expected.to eq('1697819303625-0') }
+    it { is_expected.to eq('1697819303625-441018') }
   end
 
   describe '.offset_to_time' do
