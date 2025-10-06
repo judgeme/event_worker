@@ -1,6 +1,20 @@
 require 'rails_helper'
 
 describe EventWorker::Utils::Offset do
+  describe '.valid?' do
+    subject(:result) { described_class.valid?(offset) }
+
+    context 'with valid offset' do
+      let(:offset) { '123-1' }
+      it { is_expected.to be true }
+    end
+
+    context 'with invalid offset' do
+      let(:offset) { '123' }
+      it { is_expected.to be false }
+    end
+  end
+
   describe '.compare' do
     let(:offset_a) { '123-1' }
     let(:offset_b) { '123-0' }
@@ -84,7 +98,7 @@ describe EventWorker::Utils::Offset do
     let(:time) { '2023-10-20T16:28:23.625441018Z'.to_time }
     subject(:offset) { described_class.time_to_offset(time) }
 
-    it { is_expected.to eq('1697819303625-0') }
+    it { is_expected.to eq('1697819303625-441018') }
   end
 
   describe '.offset_to_time' do

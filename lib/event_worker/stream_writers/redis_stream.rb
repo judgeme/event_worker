@@ -28,6 +28,27 @@ module EventWorker
         end
       end
 
+      def first
+        entry = @db.with do |conn|
+          conn.call('XRANGE', @topic, '-', '+', 'COUNT', 1).first
+        end
+        entry_to_hash(*entry) unless entry.nil?
+      end
+
+      def last
+        entry = @db.with do |conn|
+          conn.call('XREVRANGE', @topic, '+', '-', 'COUNT', 1).first
+        end
+        entry_to_hash(*entry) unless entry.nil?
+      end
+
+      def all
+        entries = @db.with do |conn|
+          conn.call('XRANGE', @topic, '-', '+')
+        end
+        entries.map { |entry| entry_to_hash(*entry) }
+      end
+
       private
 
       def val_to_str(value)
@@ -37,6 +58,26 @@ module EventWorker
         else
           value.to_s
         end
+      end
+
+      # TODO: Refactor to avoid hardcoding these attributes
+      def str_to_val(string, attribute)
+        case attribute
+        when 'id', 'shop_id', 'review_id'
+          string&.to_i
+        when 'data'
+          JSON.parse(string, symbolize_names: true) rescue string
+        else
+          string
+        end
+      end
+
+      def entry_to_hash(id, attributes)
+        data = { _id: id }
+        attributes.each_slice(2) do |(attribute, value)|
+          data[attribute.to_sym] = str_to_val(value, attribute)
+        end
+        data
       end
     end
   end

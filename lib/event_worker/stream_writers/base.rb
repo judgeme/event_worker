@@ -29,6 +29,18 @@ module EventWorker
         raise NotImplemented
       end
 
+      def first
+        raise NotImplemented
+      end
+
+      def last
+        raise NotImplemented
+      end
+
+      def all
+        raise NotImplemented
+      end
+
       def write
         raise NotImplemented
       end

@@ -3,7 +3,13 @@
 module EventWorker
   module Utils
     module Offset
+      OFFSET_FORMAT = /\A\d+-\d+\z/
+
       class << self
+        def valid?(offset)
+          offset.match?(OFFSET_FORMAT)
+        end
+
         def compare(offset_a, offset_b)
           timestamp_a, sequence_a = (offset_a || '0-0').split('-')
           timestamp_b, sequence_b = (offset_b || '0-0').split('-')
@@ -16,7 +22,7 @@ module EventWorker
         end
 
         def time_to_offset(time)
-          time.strftime('%s%3N-0')
+          "#{time.strftime('%s%3N')}-#{time.nsec % 1_000_000}"
         end
 
         def offset_to_time(offset)

@@ -16,6 +16,18 @@ module EventWorker
           stream_writer.size
         end
 
+        def first
+          stream_writer.first
+        end
+
+        def last
+          stream_writer.last
+        end
+
+        def all
+          stream_writer.all
+        end
+
         def push(*objs)
           with({}).push(*objs)
         end
