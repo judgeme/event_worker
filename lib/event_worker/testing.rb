@@ -44,7 +44,7 @@ module EventWorker
 
           def matches?(event_stream)
             events = EventWorker::FakedStreams.messages[event_stream.topic]
-            @matcher = include @event
+            @matcher = include({ _id: a_kind_of(String), **@event })
             @matcher.matches? events
           end
 
@@ -67,7 +67,7 @@ module EventWorker
       class << self
         def push(topic, *msgs)
           msgs.each do |msg|
-            messages[topic] << msg
+            messages[topic] << { _id: EventWorker::Utils::Offset.time_to_offset(Time.now), **msg }
           end
         end
 
