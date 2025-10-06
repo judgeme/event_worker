@@ -24,6 +24,10 @@ module EventWorker
           stream_writer.last
         end
 
+        def all
+          stream_writer.all
+        end
+
         def push(*objs)
           with({}).push(*objs)
         end

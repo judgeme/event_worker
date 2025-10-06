@@ -68,9 +68,8 @@ module EventWorker
           end
 
           def matches?(event_stream)
-            events = EventWorker::FakedStreams.messages[event_stream.topic]
             @matcher = include({ _id: be_an_event_id, **@event })
-            @matcher.matches? events
+            @matcher.matches? event_stream.all
           end
 
           def description
@@ -117,6 +116,10 @@ module EventWorker
         def last(topic)
           messages[topic].last
         end
+
+        def all(topic)
+          messages[topic]
+        end
       end
     end
 
@@ -142,6 +145,10 @@ module EventWorker
 
       def last
         EventWorker::FakedStreams.last(@topic)
+      end
+
+      def all
+        EventWorker::FakedStreams.all(@topic)
       end
     end
 

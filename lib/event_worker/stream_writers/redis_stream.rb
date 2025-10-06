@@ -42,6 +42,13 @@ module EventWorker
         entry_to_hash(*entry) unless entry.nil?
       end
 
+      def all
+        entries = @db.with do |conn|
+          conn.call('XRANGE', @topic, '-', '+')
+        end
+        entries.map { |entry| entry_to_hash(*entry) }
+      end
+
       private
 
       def val_to_str(value)
