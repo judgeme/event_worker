@@ -1,6 +1,20 @@
 require 'rails_helper'
 
 describe EventWorker::Utils::Offset do
+  describe '.valid?' do
+    subject(:result) { described_class.valid?(offset) }
+
+    context 'with valid offset' do
+      let(:offset) { '123-1' }
+      it { is_expected.to be true }
+    end
+
+    context 'with invalid offset' do
+      let(:offset) { '123' }
+      it { is_expected.to be false }
+    end
+  end
+
   describe '.compare' do
     let(:offset_a) { '123-1' }
     let(:offset_b) { '123-0' }
