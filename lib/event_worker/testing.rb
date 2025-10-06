@@ -31,6 +31,10 @@ module EventWorker
       end
 
       module Matchers
+        def an_event_id
+          be_an_event_id
+        end
+
         def be_an_event_id
           BeAnEventId.new
         end
