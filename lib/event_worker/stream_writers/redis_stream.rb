@@ -29,15 +29,17 @@ module EventWorker
       end
 
       def first
-        @db.with do |conn|
-          conn.xrange(@topic, '-', '+', count: 1).first
+        entry = @db.with do |conn|
+          conn.call('XRANGE', @topic, '-', '+', 'COUNT', 1).first
         end
+        entry_to_hash(*entry) unless entry.nil?
       end
 
       def last
-        @db.with do |conn|
-          conn.xrevrange(@topic, '+', '-', count: 1).first
+        entry = @db.with do |conn|
+          conn.call('XREVRANGE', @topic, '+', '-', 'COUNT', 1).first
         end
+        entry_to_hash(*entry) unless entry.nil?
       end
 
       private
@@ -49,6 +51,14 @@ module EventWorker
         else
           value.to_s
         end
+      end
+
+      def entry_to_hash(id, attributes)
+        data = { _id: id }
+        attributes.each_slice(2) do |(attribute, value)|
+          data[attribute.to_sym] = value
+        end
+        data
       end
     end
   end
