@@ -31,6 +31,10 @@ module EventWorker
       end
 
       module Matchers
+        def be_an_event_id
+          BeAnEventId.new
+        end
+
         def push_event(event)
           PushEvent.new event
         end
@@ -38,8 +42,17 @@ module EventWorker
         class BeAnEventId
           include RSpec::Matchers::Composable
 
-          def matches?(string)
-            EventWorker::Utils::Offset.valid?(string)
+          def matches?(value)
+            @value = value
+            value.is_a?(String) && EventWorker::Utils::Offset.valid?(value)
+          end
+
+          def description
+            'be an event id'
+          end
+
+          def failure_message
+            "expected #{@value} to be an event id"
           end
         end
 
