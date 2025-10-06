@@ -35,6 +35,14 @@ module EventWorker
           PushEvent.new event
         end
 
+        class BeAnEventId
+          include RSpec::Matchers::Composable
+
+          def matches?(string)
+            EventWorker::Utils::Offset.valid?(string)
+          end
+        end
+
         class PushEvent
           include RSpec::Matchers
 
@@ -44,7 +52,7 @@ module EventWorker
 
           def matches?(event_stream)
             events = EventWorker::FakedStreams.messages[event_stream.topic]
-            @matcher = include({ _id: a_kind_of(String), **@event })
+            @matcher = include({ _id: be_an_event_id, **@event })
             @matcher.matches? events
           end
 
@@ -54,6 +62,12 @@ module EventWorker
 
           def failure_message
             @matcher.failure_message
+          end
+
+          private
+
+          def be_an_event_id
+            BeAnEventId.new
           end
         end
       end
