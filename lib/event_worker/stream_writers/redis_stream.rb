@@ -60,10 +60,22 @@ module EventWorker
         end
       end
 
+      # TODO: Refactor to avoid hardcoding these attributes
+      def str_to_val(string, attribute)
+        case attribute
+        when 'id', 'shop_id', 'review_id'
+          string&.to_i
+        when 'data'
+          JSON.parse(string, symbolize_names: true) rescue string
+        else
+          string
+        end
+      end
+
       def entry_to_hash(id, attributes)
         data = { _id: id }
         attributes.each_slice(2) do |(attribute, value)|
-          data[attribute.to_sym] = value
+          data[attribute.to_sym] = str_to_val(value, attribute)
         end
         data
       end

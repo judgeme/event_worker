@@ -12,11 +12,25 @@ module EventWorker
           @mode = :fake
         end
 
+        def real!
+          enable_test_mode
+          @mode = :real
+        end
+
         def fake?
           @mode == :fake
         end
 
+        def real?
+          @mode == :real
+        end
+
         def reset
+          if real?
+            EventWorker.config.stream_client.with do |conn|
+              conn.del(*EventWorker::FakedStreams.messages.keys)
+            end
+          end
           EventWorker::FakedStreams.clear
         end
 
@@ -124,30 +138,34 @@ module EventWorker
     end
 
     module TestingStreamWriter
-      def self.prepended(base)
-        base.alias_method :origin_write, :write
-      end
-
       def write
         @messages.each do |message|
           EventWorker::FakedStreams.push(@topic, message)
         end
-        origin_write unless EventWorker::Testing.fake?
+        super if EventWorker::Testing.real?
       end
 
       def size
+        return super if EventWorker::Testing.real?
+
         EventWorker::FakedStreams.count(@topic)
       end
 
       def first
+        return super if EventWorker::Testing.real?
+
         EventWorker::FakedStreams.first(@topic)
       end
 
       def last
+        return super if EventWorker::Testing.real?
+
         EventWorker::FakedStreams.last(@topic)
       end
 
       def all
+        return super if EventWorker::Testing.real?
+
         EventWorker::FakedStreams.all(@topic)
       end
     end
