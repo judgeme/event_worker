@@ -110,7 +110,7 @@ module EventWorker
           context.log(error: error.detailed_message)
         end
         context.benchmark(:exit) do
-          @tasks.each { |task| task.on_exit if task.respond_to?(:on_exit) }
+          @tasks.each { |task| task.on_exit if task.respond_to?(:on_exit) } if error.nil?
           on_exit(context)
         end
         context.flush
