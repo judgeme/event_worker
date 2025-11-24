@@ -3,14 +3,21 @@
 module EventWorker
   module Stream
     class Criteria
-      def initialize(stream_writer:, serializer:, **options)
-        @stream_writer = stream_writer
-        @serializer = serializer
+      def initialize(klass, **options)
+        @klass = klass
         @options = options
       end
 
       def push(*objs)
-        @stream_writer.push(*objs.map { |obj| @serializer.call(obj, **@options) })
+        @klass.stream_writer.push(*objs.map { |obj| @klass.serialize(obj, **@options) })
+      end
+
+      def first(limit = nil)
+        @klass.stream_writer.first(limit:, **@options)
+      end
+
+      def last(limit = nil)
+        @klass.stream_writer.last(limit:, **@options)
       end
     end
   end

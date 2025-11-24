@@ -16,12 +16,12 @@ module EventWorker
           stream_writer.size
         end
 
-        def first(...)
-          stream_writer.first(...)
+        def first(limit = nil)
+          stream_writer.first(limit:)
         end
 
-        def last(...)
-          stream_writer.last(...)
+        def last(limit = nil)
+          stream_writer.last(limit:)
         end
 
         def all
@@ -33,9 +33,11 @@ module EventWorker
         end
 
         def with(attributes)
-          EventWorker::Stream::Criteria.new(
-            stream_writer: stream_writer, serializer: method(:serialize), with: attributes
-          )
+          EventWorker::Stream::Criteria.new(self, with: attributes)
+        end
+
+        def after(offset)
+          EventWorker::Stream::Criteria.new(self, after: offset)
         end
 
         def serialize(obj, **options)
