@@ -28,6 +28,17 @@ module EventWorker
           stream_writer.all
         end
 
+        def each(batch_size: 1000, &block)
+          cursor = nil
+          loop do
+            messages = stream_writer.first(limit: batch_size, after: cursor)
+            messages.each(&block)
+            break if messages.size < batch_size
+
+            cursor = messages.last[:_id]
+          end
+        end
+
         def push(*objs)
           with({}).push(*objs)
         end
