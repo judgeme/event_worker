@@ -123,16 +123,23 @@ module EventWorker
           messages[topic].size
         end
 
-        def first(topic, ...)
-          messages[topic].first(...)
+        def first(topic, limit: nil, after: nil)
+          first_of_array(messages[topic], limit:, after:)
         end
 
-        def last(topic)
-          messages[topic].last
+        def last(topic, limit: nil, after: nil)
+          first_of_array(messages[topic].reverse, limit:, after:, op: :<)
         end
 
         def all(topic)
           messages[topic]
+        end
+
+        private
+
+        def first_of_array(array, limit: nil, after: nil, op: :>)
+          index = after.nil? ? 0 : array.bsearch_index { |msg| msg[:_id].public_send(op, after) }
+          (index.nil? ? [] : array[index..]).first(*[limit].compact)
         end
       end
     end
