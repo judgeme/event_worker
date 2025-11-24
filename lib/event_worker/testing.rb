@@ -123,8 +123,8 @@ module EventWorker
           messages[topic].size
         end
 
-        def first(topic)
-          messages[topic].first
+        def first(topic, ...)
+          messages[topic].first(...)
         end
 
         def last(topic)
@@ -151,16 +151,16 @@ module EventWorker
         EventWorker::FakedStreams.count(@topic)
       end
 
-      def first
+      def first(...)
         return super if EventWorker::Testing.real?
 
-        EventWorker::FakedStreams.first(@topic)
+        EventWorker::FakedStreams.first(@topic, ...)
       end
 
-      def last
+      def last(...)
         return super if EventWorker::Testing.real?
 
-        EventWorker::FakedStreams.last(@topic)
+        EventWorker::FakedStreams.last(@topic, ...)
       end
 
       def all
