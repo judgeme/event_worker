@@ -28,18 +28,26 @@ module EventWorker
         end
       end
 
-      def first
-        entry = @db.with do |conn|
-          conn.call('XRANGE', @topic, '-', '+', 'COUNT', 1).first
+      def first(limit: nil, after: nil)
+        entries = @db.with do |conn|
+          conn.call('XRANGE', @topic, (after.nil? ? '-' : "(#{after}"), '+', 'COUNT', limit || 1)
         end
-        entry_to_hash(*entry) unless entry.nil?
+        if limit.nil?
+          entry_to_hash(*entries.first) unless entries.empty?
+        else
+          entries.map { |entry| entry_to_hash(*entry) }
+        end
       end
 
-      def last
-        entry = @db.with do |conn|
-          conn.call('XREVRANGE', @topic, '+', '-', 'COUNT', 1).first
+      def last(limit: nil, after: nil)
+        entries = @db.with do |conn|
+          conn.call('XREVRANGE', @topic, (after.nil? ? '+' : "(#{after}"), '-', 'COUNT', limit || 1)
         end
-        entry_to_hash(*entry) unless entry.nil?
+        if limit.nil?
+          entry_to_hash(*entries.first) unless entries.empty?
+        else
+          entries.map { |entry| entry_to_hash(*entry) }
+        end
       end
 
       def all

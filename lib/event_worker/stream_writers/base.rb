@@ -41,6 +41,10 @@ module EventWorker
         raise NotImplemented
       end
 
+      def each
+        raise NotImplemented
+      end
+
       def write
         raise NotImplemented
       end

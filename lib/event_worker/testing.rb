@@ -123,16 +123,25 @@ module EventWorker
           messages[topic].size
         end
 
-        def first(topic)
-          messages[topic].first
+        def first(topic, limit: nil, after: nil)
+          first_of_array(messages[topic], limit:, after:)
         end
 
-        def last(topic)
-          messages[topic].last
+        def last(topic, limit: nil, after: nil)
+          first_of_array(messages[topic].reverse, limit:, after:, op: :<)
         end
 
         def all(topic)
           messages[topic]
+        end
+
+        private
+
+        def first_of_array(array, limit: nil, after: nil, op: :>)
+          index = after.nil? ? 0 : array.bsearch_index do |msg|
+            EventWorker::Utils::Offset.compare(msg[:_id], after).public_send(op, 0)
+          end
+          (index.nil? ? [] : array[index..]).first(*[limit].compact)
         end
       end
     end
@@ -151,16 +160,16 @@ module EventWorker
         EventWorker::FakedStreams.count(@topic)
       end
 
-      def first
+      def first(...)
         return super if EventWorker::Testing.real?
 
-        EventWorker::FakedStreams.first(@topic)
+        EventWorker::FakedStreams.first(@topic, ...)
       end
 
-      def last
+      def last(...)
         return super if EventWorker::Testing.real?
 
-        EventWorker::FakedStreams.last(@topic)
+        EventWorker::FakedStreams.last(@topic, ...)
       end
 
       def all
