@@ -138,7 +138,9 @@ module EventWorker
         private
 
         def first_of_array(array, limit: nil, after: nil, op: :>)
-          index = after.nil? ? 0 : array.bsearch_index { |msg| msg[:_id].public_send(op, after) }
+          index = after.nil? ? 0 : array.bsearch_index do |msg|
+            EventWorker::Utils::Offset.compare(msg[:_id], after).public_send(op, 0)
+          end
           (index.nil? ? [] : array[index..]).first(*[limit].compact)
         end
       end
