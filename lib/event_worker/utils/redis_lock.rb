@@ -36,7 +36,7 @@ module EventWorker
 
         def acquire(redis, key, index: nil, duration: LOCK_DURATION, use_lua: false)
           # Use time as token to know when the lock was acquired
-          token = Time.current.iso8601
+          token = ::Time.current.iso8601
           return unless redis.set(key, token, nx: true, ex: duration)
 
           new(redis, key, token, index:, duration:, use_lua:)

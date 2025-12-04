@@ -111,7 +111,7 @@ module EventWorker
       class << self
         def push(topic, *msgs)
           msgs.each do |msg|
-            messages[topic] << { _id: EventWorker::Utils::Offset.time_to_offset(Time.now), **msg }
+            messages[topic] << { _id: EventWorker::Utils::Offset.time_to_offset(::Time.now), **msg }
           end
         end
 

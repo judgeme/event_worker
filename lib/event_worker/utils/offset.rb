@@ -29,7 +29,7 @@ module EventWorker
           return if offset.nil?
 
           timestamp, _sequence = offset.split('-')
-          DateTime.strptime(timestamp, '%Q')
+          ::DateTime.strptime(timestamp, '%Q')
         end
       end
     end
