@@ -7,7 +7,7 @@ describe EventWorker::Utils::CronJob do
 
   describe '#offset=' do
     let(:block_calls) { [] }
-    let(:block) { proc { |from, to, tick_offset, current| block_calls << { from:, to:, tick_offset:, current: } } }
+    let(:block) { proc { |from, to, current| block_calls << { from:, to:, current: } } }
     let(:base_time) { Time.utc(2024, 1, 15, 12, 30, 45) }
 
     context 'when setting offset for the first time' do
@@ -38,7 +38,6 @@ describe EventWorker::Utils::CronJob do
 
     context 'when setting offset that crosses a tick boundary' do
       let(:first_offset) { EventWorker::Utils::Offset.time_to_offset(base_time) }
-      let(:tick_offset) { EventWorker::Utils::Offset.time_to_offset(Time.utc(2024, 1, 15, 12, 32, 0)) }
       let(:second_offset) { EventWorker::Utils::Offset.time_to_offset(base_time + 61.seconds) }
 
       it 'calls the block and updates from_offset, to_offset' do
@@ -48,7 +47,6 @@ describe EventWorker::Utils::CronJob do
         expect(block_calls.size).to eq(1)
         expect(block_calls.first[:from]).to eq(first_offset)
         expect(block_calls.first[:to]).to eq(first_offset)
-        expect(block_calls.first[:tick_offset]).to eq(tick_offset)
         expect(block_calls.first[:current]).to eq(second_offset)
         expect(cron_job.instance_variable_get(:@from_offset)).to eq(second_offset)
         expect(cron_job.instance_variable_get(:@to_offset)).to eq(second_offset)
@@ -60,7 +58,6 @@ describe EventWorker::Utils::CronJob do
       let(:base_time) { Time.utc(2024, 1, 15, 12, 30, 0) }
       let(:first_offset) { EventWorker::Utils::Offset.time_to_offset(base_time + 5.seconds) }
       let(:second_offset) { EventWorker::Utils::Offset.time_to_offset(base_time + 10.seconds) }
-      let(:tick_offset) { EventWorker::Utils::Offset.time_to_offset(Time.utc(2024, 1, 15, 12, 32, 0)) }
       let(:third_offset) { EventWorker::Utils::Offset.time_to_offset(base_time + 65.seconds) }
 
       it 'calls the block with correct to_offset' do
@@ -71,7 +68,6 @@ describe EventWorker::Utils::CronJob do
         expect(block_calls.size).to eq(1)
         expect(block_calls.first[:from]).to eq(first_offset)
         expect(block_calls.first[:to]).to eq(second_offset)
-        expect(block_calls.first[:tick_offset]).to eq(tick_offset)
         expect(block_calls.first[:current]).to eq(third_offset)
         expect(cron_job.instance_variable_get(:@from_offset)).to eq(third_offset)
         expect(cron_job.instance_variable_get(:@to_offset)).to eq(third_offset)
