@@ -11,16 +11,18 @@ module EventWorker
         @mutex = Mutex.new
       end
 
-      def refresh(time = Time.now)
+      def refresh(time = ::Time.now)
         @mutex.synchronize do
           @old_accumulated_value = @deque.shift[0] while !@deque.empty? && time - @deque[0][1] >= @time_period
         end
+        self
       end
 
-      def add(val, time = Time.now)
+      def add(val, time = ::Time.now)
         @mutex.synchronize do
           @deque << [val + (@deque.empty? ? @old_accumulated_value : @deque[-1][0]), time]
         end
+        self
       end
 
       def value

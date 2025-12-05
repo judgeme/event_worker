@@ -29,7 +29,12 @@ module EventWorker
           return if offset.nil?
 
           timestamp, _sequence = offset.split('-')
-          DateTime.strptime(timestamp, '%Q')
+          ::DateTime.strptime(timestamp, '%Q')
+        end
+
+        def tick_offset(interval, offset)
+          time = offset_to_time(offset)
+          EventWorker::Utils::Offset.time_to_offset(EventWorker::Utils::Time.tick_time(interval, time))
         end
       end
     end
