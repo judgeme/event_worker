@@ -4,11 +4,14 @@ module EventWorker
   module StreamWriters
     class RedisStream < Base
       def write(trim_messages_older: nil)
+        # NOTE: pipelined block must use the yielded pipeline arg (`pipeline.call`, not `conn.call`).
+        # Required by `redis-client` (used when STREAM_REDIS_DRIVER=hiredis); compatible with redis-rb,
+        # which yields `self` as the pipeline arg.
         @db.with do |conn|
-          conn.pipelined do
+          conn.pipelined do |pipeline|
             @messages.each_with_index do |message, index|
               trim_option = index.zero? && !trim_messages_older.nil? ? ['MINID', trim_messages_older] : []
-              conn.call('XADD', @topic, *trim_option, '*', *message.compact.map { |k, v| [k, val_to_str(v)] })
+              pipeline.call('XADD', @topic, *trim_option, '*', *message.compact.map { |k, v| [k, val_to_str(v)] })
             end
           end
         end
