@@ -32,6 +32,7 @@ module EventWorker
       end
 
       def process_new_events
+        FileUtils.touch('/tmp/liveness')
         events = nil
         context = Context.new("#{name} process")
         context.benchmark(:fetch) { events = fetch_new_events }
