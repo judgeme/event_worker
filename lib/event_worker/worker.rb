@@ -27,6 +27,7 @@ module EventWorker
 
     def process_new_events
       FileUtils.touch('/tmp/liveness')
+      sleep(3600) if File.exist?('/tmp/simulate_hang')
       events = nil
       @context[:fetch_time] = Benchmark.realtime { events = fetch_new_events }
       process(*events) unless events.nil?
