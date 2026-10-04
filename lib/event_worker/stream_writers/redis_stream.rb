@@ -71,16 +71,21 @@ module EventWorker
         end
       end
 
-      # TODO: Refactor to avoid hardcoding these attributes
       def str_to_val(string, attribute)
-        case attribute
-        when 'id', 'shop_id', 'review_id'
+        case @field_types[attribute]
+        when :integer
           string&.to_i
-        when 'data'
-          JSON.parse(string, symbolize_names: true) rescue string
+        when :json
+          parse_json(string)
         else
           string
         end
+      end
+
+      def parse_json(string)
+        JSON.parse(string, symbolize_names: true)
+      rescue JSON::ParserError
+        string
       end
 
       def entry_to_hash(id, attributes)

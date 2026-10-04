@@ -5,6 +5,12 @@ module EventWorker
     attr_reader :stream_reader_class
     attr_reader :stream_writer_class
     attr_reader :stream_client
+    attr_accessor :field_types
+    attr_accessor :liveness_file
+
+    def initialize
+      @field_types = {}
+    end
 
     def stream_store=(store)
       type, client = store

@@ -26,7 +26,8 @@ module EventWorker
     end
 
     def process_new_events
-      FileUtils.touch('/tmp/liveness')
+      liveness_file = EventWorker.config.liveness_file
+      FileUtils.touch(liveness_file) if liveness_file.present?
       events = nil
       @context[:fetch_time] = Benchmark.realtime { events = fetch_new_events }
       process(*events) unless events.nil?

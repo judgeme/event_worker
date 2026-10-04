@@ -3,9 +3,10 @@
 module EventWorker
   module StreamWriters
     class Base
-      def initialize(db, topic)
+      def initialize(db, topic, field_types: {})
         @db = db
         @topic = topic
+        @field_types = field_types
         @messages = []
       end
 
@@ -18,39 +19,39 @@ module EventWorker
         flush
       end
 
-      def flush(*args)
+      def flush(...)
         return if @messages.empty?
 
-        write(*args)
+        write(...)
         @messages.clear
       end
 
       def size
-        raise NotImplemented
+        raise NotImplementedError
       end
 
       def first
-        raise NotImplemented
+        raise NotImplementedError
       end
 
       def last
-        raise NotImplemented
+        raise NotImplementedError
       end
 
       def all
-        raise NotImplemented
+        raise NotImplementedError
       end
 
       def each
-        raise NotImplemented
+        raise NotImplementedError
       end
 
       def write
-        raise NotImplemented
+        raise NotImplementedError
       end
 
       def trim
-        raise NotImplemented
+        raise NotImplementedError
       end
     end
   end

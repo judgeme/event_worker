@@ -38,8 +38,6 @@ require_relative 'event_worker/worker/v2'
 
 module EventWorker
   class << self
-    # EventWorker.config will be nullified by Rails reloading if define EventWorker in lib/ folder.
-    # So move the module here to avoid being reloaded.
     attr_accessor :config
 
     def configure
@@ -53,7 +51,7 @@ module EventWorker
     end
 
     def stream_writer(topic)
-      config.stream_writer_class.new(config.stream_client, topic)
+      config.stream_writer_class.new(config.stream_client, topic, field_types: config.field_types)
     end
   end
 end

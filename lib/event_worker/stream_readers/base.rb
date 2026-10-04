@@ -31,11 +31,11 @@ module EventWorker
       end
 
       def fetch(_topics)
-        raise NotImplemented
+        raise NotImplementedError
       end
 
       def each_entry_with_topic(_response)
-        raise NotImplemented
+        raise NotImplementedError
       end
 
       def slowing?
