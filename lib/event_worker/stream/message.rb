@@ -1,7 +1,5 @@
 # frozen_string_literal: true
 
-require 'event_worker/stream/criteria'
-
 module EventWorker
   module Stream
     module Message
