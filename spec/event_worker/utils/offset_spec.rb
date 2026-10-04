@@ -1,4 +1,6 @@
-require 'rails_helper'
+# frozen_string_literal: true
+
+require 'spec_helper'
 
 describe EventWorker::Utils::Offset do
   describe '.valid?' do
@@ -104,7 +106,7 @@ describe EventWorker::Utils::Offset do
   describe '.offset_to_time' do
     subject(:time) { described_class.offset_to_time(offset) }
     let(:offset) { "#{expected_time.strftime('%Q')}-#{sequence}" }
-    let(:sequence) { Faker::Number.number(digits: 3) }
+    let(:sequence) { SecureRandom.random_number(100..999) }
     let(:expected_time) { DateTime.now }
 
     it 'converts an offset string to a DateTime' do

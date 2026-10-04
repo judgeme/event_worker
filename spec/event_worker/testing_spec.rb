@@ -1,6 +1,6 @@
 # frozen_string_literal: true
 
-require 'rails_helper'
+require 'spec_helper'
 
 RSpec.describe EventWorker::Testing do
   describe '.reset in real mode' do
@@ -34,6 +34,39 @@ RSpec.describe EventWorker::Testing do
       described_class.reset
 
       expect(connection).to have_received(:call).with('DEL', '#topic_a', '#topic_b')
+    end
+  end
+
+  redis_client_missing = begin
+    require 'redis-client'
+    nil
+  rescue LoadError
+    'redis-client is bundled only with redis-rb 5'
+  end
+
+  describe '.reset in real mode on a ConnectionPool of RedisClients', skip: redis_client_missing do
+    let(:topics) { Array.new(2) { "#event_worker_spec:#{SecureRandom.hex(8)}" } }
+
+    around do |example|
+      original_config = EventWorker.config
+      pool = ConnectionPool.new { RedisClient.new(url: REDIS_URL) }
+      EventWorker.configure { |config| config.stream_store = :redis_stream, pool }
+      described_class.real!
+      example.run
+    ensure
+      described_class.fake!
+      EventWorker.config = original_config
+      pool&.shutdown(&:close)
+      redis.del(*topics)
+    end
+
+    it 'deletes every topic written since the last reset', :aggregate_failures do
+      topics.each { |topic| EventWorker.stream_writer(topic).push({ name: 'x' }) }
+      expect(topics.map { |topic| redis.exists?(topic) }).to eq([true, true])
+
+      described_class.reset
+
+      expect(topics.map { |topic| redis.exists?(topic) }).to eq([false, false])
     end
   end
 

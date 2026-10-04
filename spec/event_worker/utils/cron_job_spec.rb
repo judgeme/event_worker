@@ -1,4 +1,6 @@
-require 'rails_helper'
+# frozen_string_literal: true
+
+require 'spec_helper'
 
 describe EventWorker::Utils::CronJob do
   let(:cron_job) { described_class.every(interval, &block) }

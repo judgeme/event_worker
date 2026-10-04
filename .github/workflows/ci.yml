@@ -1,0 +1,44 @@
+name: CI
+
+on:
+  pull_request:
+  push:
+    branches: [ main ]
+
+jobs:
+  rspec:
+    runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - redis-gem-version: '~> 4.5.0'
+            connection-pool-gem-version: '~> 2.5'
+          - redis-gem-version: '~> 5.4'
+            connection-pool-gem-version: '~> 3.0'
+    env:
+      REDIS_GEM_VERSION: ${{ matrix.redis-gem-version }}
+      CONNECTION_POOL_GEM_VERSION: ${{ matrix.connection-pool-gem-version }}
+    services:
+      redis:
+        image: redis:7
+        ports:
+          - 6379:6379
+        options: >-
+          --health-cmd "redis-cli ping"
+          --health-interval 10s
+          --health-timeout 5s
+          --health-retries 5
+
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v7
+
+      - name: Set up Ruby
+        uses: ruby/setup-ruby@v1
+        with:
+          ruby-version: '3.4'
+          bundler-cache: true
+
+      - name: Run specs
+        run: bundle exec rspec

@@ -4,7 +4,7 @@ module EventWorker
       LOCK_DURATION = 1.minute
       REFRESH_SCRIPT = <<~LUA.freeze
         if redis.call("get", KEYS[1]) == ARGV[1] then
-          return redis.call("set", KEYS[1], ARGV[1], "EX", ARGV[2], "XX", true)
+          return redis.call("set", KEYS[1], ARGV[1], "EX", ARGV[2], "XX")
         else
           return 0
         end
@@ -85,7 +85,7 @@ module EventWorker
 
       def refresh_lua
         # Use a Lua script to atomically check the token and refresh the key
-        @redis.eval(REFRESH_SCRIPT, keys: [@key], argv: [@token, @duration]).to_i > 0
+        @redis.eval(REFRESH_SCRIPT, keys: [@key], argv: [@token, @duration.to_i]) == 'OK'
       end
 
       def release_redis

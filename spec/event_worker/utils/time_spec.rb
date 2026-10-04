@@ -1,4 +1,6 @@
-require 'rails_helper'
+# frozen_string_literal: true
+
+require 'spec_helper'
 
 describe EventWorker::Utils::Time do
   describe '.tick_time' do

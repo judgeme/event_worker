@@ -1,6 +1,7 @@
 # frozen_string_literal: true
 
-require 'rails_helper'
+require 'spec_helper'
+require 'tmpdir'
 
 RSpec.describe EventWorker::Worker::V2 do
   subject(:worker) { worker_class.new(name: 'liveness_spec_worker', backlog: 0) }

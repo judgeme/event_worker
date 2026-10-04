@@ -1,6 +1,6 @@
 # frozen_string_literal: true
 
-require 'rails_helper'
+require 'spec_helper'
 
 RSpec.describe EventWorker::StreamReaders::Base do
   subject(:reader) { described_class.new(double('stream client'), offsets: {}) }

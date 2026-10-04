@@ -1,6 +1,6 @@
 # frozen_string_literal: true
 
-require 'rails_helper'
+require 'spec_helper'
 
 RSpec.describe EventWorker::StreamWriters::Base do
   subject(:writer) { described_class.new(double('stream client'), '#event_worker_spec') }
